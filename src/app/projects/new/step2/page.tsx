@@ -1,11 +1,11 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { PRESETS } from "@/lib/model-presets";
 import { postJSON } from "@/lib/api";
 
-export default function Step2Page() {
+function Step2Content() {
   const router = useRouter();
   const sp = useSearchParams();
   const projectId = sp.get("projectId");
@@ -121,5 +121,13 @@ function PresetBox({
         ))}
       </ul>
     </div>
+  );
+}
+
+export default function Step2Page() {
+  return (
+    <Suspense fallback={<div className="p-6">Loading...</div>}>
+      <Step2Content />
+    </Suspense>
   );
 }
