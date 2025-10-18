@@ -39,7 +39,7 @@ export async function fetchChatGPTShareBrowserless(url: string): Promise<SharePa
   console.log("Using Browserless.io for ChatGPT parsing...");
 
   try {
-    // Use Browserless.io content endpoint with JavaScript execution
+    // Use Browserless.io content endpoint with simpler approach
     const response = await fetch(`${BROWSERLESS_URL}/content?token=${BROWSERLESS_TOKEN}`, {
       method: 'POST',
       headers: {
@@ -47,88 +47,11 @@ export async function fetchChatGPTShareBrowserless(url: string): Promise<SharePa
       },
       body: JSON.stringify({
         url: url,
-        waitFor: 3000, // Wait 3 seconds for content to load
+        waitFor: 5000, // Wait 5 seconds for content to load
         gotoOptions: {
-          waitUntil: 'networkidle2',
+          waitUntil: 'domcontentloaded',
           timeout: 30000
-        },
-        addScriptTag: [
-          {
-            content: `
-              // Wait for conversation content to load
-              await new Promise(resolve => setTimeout(resolve, 3000));
-              
-              // Extract conversation data
-              const messages = [];
-              let title = document.title || "Shared Chat";
-              
-              // Try to get title from meta or other sources
-              const titleEl = document.querySelector('title');
-              if (titleEl) {
-                title = titleEl.textContent || title;
-              }
-              
-              // Look for conversation elements
-              const messageSelectors = [
-                '[data-message-author-role]',
-                '[data-testid*="message"]',
-                '[data-testid*="conversation"]',
-                '[data-message-id]',
-                '.group\\/conversation-turn',
-                '.group\\/message',
-                '.conversation-turn',
-                '.message',
-                '[class*="message"]',
-                '[class*="turn"]',
-                '[class*="chat"]'
-              ];
-              
-              for (const selector of messageSelectors) {
-                const elements = document.querySelectorAll(selector);
-                for (const el of elements) {
-                  const text = el.textContent?.trim();
-                  if (text && text.length > 10 && text.length < 5000) {
-                    // Filter out navigation and UI elements
-                    if (!/Continue this conversation|Log in|Sign up|Share|Copy link|Download|Regenerate|Skip to content|ChatGPT|Attach|Search|Study|Voice|By messaging ChatGPT|Terms|Privacy Policy|Loading|Error|Try again|window\.__oai|requestAnimationFrame|function\(\)|Date\.now\(\)|__oai_logHTML|__oai_SSR_HTML|__oai_logTTI|__oai_SSR_TTI/i.test(text)) {
-                      
-                      // Determine role from element attributes or content patterns
-                      let role = "assistant";
-                      
-                      const authorRole = el.getAttribute('data-message-author-role') || 
-                                        el.getAttribute('data-author-role') ||
-                                        el.getAttribute('data-role');
-                      
-                      if (authorRole === 'user') {
-                        role = "user";
-                      } else if (authorRole === 'assistant') {
-                        role = "assistant";
-                      } else {
-                        // Content-based heuristics
-                        if (/^(hi|hello|hey|안녕|질문|문의|도움|help|can you|please|요청|what|how|why|when|where|who|알아|알고|궁금|하고|싶어|해줘|해주|도와|설명|분석|제시|분류|추출)/i.test(text)) {
-                          role = "user";
-                        } else if (/^(i'm|i am|i can|i will|i would|i should|i think|i believe|here's|here is|let me|i'll|네|예|좋습니다|알겠습니다|도와드리겠습니다|제안해드리겠습니다|분석해보겠습니다|설명드리겠습니다)/i.test(text)) {
-                          role = "assistant";
-                        } else {
-                          // For Korean text, questions often end with "?" or contain question words
-                          if (text.includes('?') || /^(무엇|어떤|어떻게|왜|언제|어디서|누가|어느|몇|얼마나)/i.test(text)) {
-                            role = "user";
-                          } else {
-                            role = text.length < 100 ? "user" : "assistant";
-                          }
-                        }
-                      }
-                      
-                      messages.push({ role, content: text });
-                    }
-                  }
-                }
-              }
-              
-              // Return the extracted data
-              return { title, messages };
-            `
-          }
-        ]
+        }
       })
     });
 
@@ -139,10 +62,96 @@ export async function fetchChatGPTShareBrowserless(url: string): Promise<SharePa
     const result = await response.json();
     console.log("Browserless.io response:", result);
 
-    // Extract the result from the script execution
-    const extractedData = result.result || result;
+    // Extract HTML content from Browserless.io response
+    const html = result.content || result.html || result;
     
-    if (!extractedData || !extractedData.messages || extractedData.messages.length === 0) {
+    if (!html || typeof html !== 'string') {
+      throw new Error("No HTML content received from Browserless.io");
+    }
+
+    console.log(`Received HTML from Browserless.io: ${html.length} characters`);
+
+    // Parse the HTML to extract conversation data
+    const messages = [];
+    let title = "Shared Chat";
+
+    // Try to extract title
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    if (titleMatch) {
+      title = titleMatch[1].trim();
+    }
+
+    // Look for __NEXT_DATA__ script tag
+    const nextDataMatch = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>(.*?)<\/script>/s);
+    if (nextDataMatch) {
+      try {
+        const data = JSON.parse(nextDataMatch[1]);
+        const messagesData = data?.props?.pageProps?.serverResponse?.messages ||
+                            data?.props?.pageProps?.messages ||
+                            data?.props?.messages ||
+                            data?.messages;
+        
+        if (Array.isArray(messagesData)) {
+          for (const msg of messagesData) {
+            if (msg && typeof msg === 'object') {
+              const role = msg.role || msg.author_role || 'assistant';
+              const content = msg.content || msg.text || msg.message || '';
+              if (content && typeof content === 'string' && content.trim()) {
+                messages.push({
+                  role: role === 'user' ? 'user' : 'assistant',
+                  content: content.trim()
+                });
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.log('Failed to parse __NEXT_DATA__:', e);
+      }
+    }
+
+    // If no messages found, try to extract from page content
+    if (messages.length === 0) {
+      // Look for conversation elements in HTML
+      const messageSelectors = [
+        '[data-message-author-role]',
+        '[data-testid*="message"]',
+        '[data-testid*="conversation"]',
+        '[data-message-id]',
+        '.group\\/conversation-turn',
+        '.group\\/message',
+        '.conversation-turn',
+        '.message',
+        '[class*="message"]',
+        '[class*="turn"]',
+        '[class*="chat"]'
+      ];
+
+      for (const selector of messageSelectors) {
+        const regex = new RegExp(`<[^>]*${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^>]*>(.*?)</[^>]*>`, 'gs');
+        const matches = html.match(regex);
+        if (matches) {
+          for (const match of matches) {
+            const text = match.replace(/<[^>]*>/g, '').trim();
+            if (text && text.length > 10 && text.length < 5000) {
+              // Filter out navigation and UI elements
+              if (!/Continue this conversation|Log in|Sign up|Share|Copy link|Download|Regenerate|Skip to content|ChatGPT|Attach|Search|Study|Voice|By messaging ChatGPT|Terms|Privacy Policy|Loading|Error|Try again|window\.__oai|requestAnimationFrame|function\(\)|Date\.now\(\)|__oai_logHTML|__oai_SSR_HTML|__oai_logTTI|__oai_SSR_TTI/i.test(text)) {
+                
+                // Simple role detection
+                let role = 'assistant';
+                if (/^(hi|hello|hey|what|how|why|when|where|who|can you|please|help|안녕|질문|문의|도움)/i.test(text)) {
+                  role = 'user';
+                }
+                
+                messages.push({ role, content: text });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (messages.length === 0) {
       throw new Error("No conversation messages found in Browserless.io response");
     }
 
@@ -150,7 +159,7 @@ export async function fetchChatGPTShareBrowserless(url: string): Promise<SharePa
     const uniqueMessages = [];
     const seenContent = new Set();
     
-    for (const msg of extractedData.messages) {
+    for (const msg of messages) {
       const contentKey = msg.content.trim();
       if (!seenContent.has(contentKey)) {
         seenContent.add(contentKey);
@@ -164,7 +173,7 @@ export async function fetchChatGPTShareBrowserless(url: string): Promise<SharePa
     console.log(`Extracted ${uniqueMessages.length} unique messages via Browserless.io`);
 
     return {
-      title: extractedData.title || "Shared Chat",
+      title: title,
       messages: uniqueMessages.slice(0, 60) // Cap to keep payload reasonable
     };
 
