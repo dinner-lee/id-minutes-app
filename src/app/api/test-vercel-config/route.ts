@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     // Test Puppeteer availability
     let puppeteerTest = { available: false, error: null };
     try {
-      const puppeteer = await import('puppeteer');
+      const puppeteer = await import('puppeteer-core');
       puppeteerTest = { available: true };
     } catch (e: any) {
       puppeteerTest = { available: false, error: e.message };
@@ -41,11 +41,11 @@ export async function POST(req: NextRequest) {
     let browserTest = { success: false, error: null, duration: 0 };
     if (chromiumTest.available && puppeteerTest.available) {
       try {
-        const puppeteer = await import('puppeteer');
+        const puppeteer = await import('puppeteer-core');
         const chromium = await import('@sparticuz/chromium');
         
         const launchStart = Date.now();
-        const browser = await puppeteer.launch({
+        const browser = await puppeteer.default.launch({
           args: [
             ...chromium.args,
             '--no-sandbox',

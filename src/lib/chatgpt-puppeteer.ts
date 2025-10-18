@@ -1,4 +1,4 @@
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
 
 export interface SharePayload {
@@ -41,8 +41,15 @@ export async function fetchChatGPTSharePuppeteer(url: string): Promise<SharePayl
       console.log("Configuring Puppeteer for Vercel...");
       
       try {
-        const executablePath = await chromium.executablePath();
-        console.log("Chromium executable path:", executablePath);
+        // Try to get the Chromium executable path
+        let executablePath;
+        try {
+          executablePath = await chromium.executablePath();
+          console.log("Chromium executable path:", executablePath);
+        } catch (chromiumError) {
+          console.error("Failed to get Chromium executable path:", chromiumError);
+          throw new Error(`Chromium binary not available on Vercel: ${chromiumError.message}`);
+        }
         
         browser = await puppeteer.launch({
           args: [
@@ -72,11 +79,12 @@ export async function fetchChatGPTSharePuppeteer(url: string): Promise<SharePayl
         console.log("Puppeteer launched successfully on Vercel");
       } catch (error) {
         console.error("Failed to launch Puppeteer on Vercel:", error);
-        throw error;
+        throw new Error(`Puppeteer launch failed on Vercel: ${error.message}. This may be due to missing Chromium binary or memory constraints.`);
       }
     } else {
-      // Use local Chrome for development
-      browser = await puppeteer.launch({
+      // Use local Chrome for development - import full puppeteer for local dev
+      const puppeteerLocal = await import('puppeteer');
+      browser = await puppeteerLocal.default.launch({
         headless: true,
         args: [
           '--no-sandbox',
@@ -314,7 +322,9 @@ export async function debugChatGPTSharePuppeteer(url: string): Promise<{
         ignoreHTTPSErrors: true,
       });
     } else {
-      browser = await puppeteer.launch({
+      // Use local Chrome for development - import full puppeteer for local dev
+      const puppeteerLocal = await import('puppeteer');
+      browser = await puppeteerLocal.default.launch({
         headless: true,
         args: [
           '--no-sandbox',
