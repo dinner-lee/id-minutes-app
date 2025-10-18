@@ -37,7 +37,7 @@ export async function fetchChatGPTSharePuppeteer(url: string): Promise<SharePayl
     const isVercel = process.env.VERCEL === '1';
     
     if (isVercel) {
-      // Use Chromium for Vercel deployment
+      // Use Chromium for Vercel deployment with optimized settings
       console.log("Configuring Puppeteer for Vercel...");
       
       try {
@@ -54,12 +54,20 @@ export async function fetchChatGPTSharePuppeteer(url: string): Promise<SharePayl
             '--no-first-run',
             '--no-zygote',
             '--single-process',
-            '--disable-gpu'
+            '--disable-gpu',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-features=TranslateUI',
+            '--disable-ipc-flooding-protection',
+            '--memory-pressure-off',
+            '--max_old_space_size=512'
           ],
           defaultViewport: chromium.defaultViewport,
           executablePath: executablePath,
           headless: chromium.headless,
           ignoreHTTPSErrors: true,
+          timeout: 30000, // 30 second launch timeout
         });
         console.log("Puppeteer launched successfully on Vercel");
       } catch (error) {
@@ -93,33 +101,33 @@ export async function fetchChatGPTSharePuppeteer(url: string): Promise<SharePayl
 
     console.log(`Navigating to: ${url}`);
     
-    // Navigate to the ChatGPT share URL
+    // Navigate to the ChatGPT share URL with reduced timeouts for Vercel
     await page.goto(url, { 
-      waitUntil: 'networkidle2',
-      timeout: 30000 
+      waitUntil: 'domcontentloaded', // Changed from networkidle2 to reduce timeout
+      timeout: 15000 // Reduced from 30000
     });
 
     // Wait for the page to load and conversation content to appear
     console.log("Waiting for conversation content to load...");
     
     try {
-      // Wait for conversation elements to appear
+      // Wait for conversation elements to appear with reduced timeout
       await page.waitForSelector('[data-message-author-role], .conversation-turn, [class*="message"]', { 
-        timeout: 15000 
+        timeout: 8000 // Reduced from 15000
       });
     } catch (e) {
       console.log("Conversation elements not found, trying alternative selectors...");
       
-      // Try alternative selectors
+      // Try alternative selectors with reduced timeout
       try {
-        await page.waitForSelector('main, [role="main"], .main-content', { timeout: 10000 });
+        await page.waitForSelector('main, [role="main"], .main-content', { timeout: 5000 }); // Reduced from 10000
       } catch (e2) {
         console.log("No main content found, proceeding with page content...");
       }
     }
 
-    // Wait a bit more for dynamic content to load
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    // Reduced wait time for dynamic content
+    await new Promise(resolve => setTimeout(resolve, 1500)); // Reduced from 3000
 
     console.log("Extracting conversation data...");
     
@@ -239,10 +247,24 @@ export async function fetchChatGPTSharePuppeteer(url: string): Promise<SharePayl
 
   } catch (error) {
     console.error("Puppeteer parsing failed:", error);
-    throw error;
+    
+    // Provide more specific error messages for common Vercel issues
+    if (error.message?.includes('timeout')) {
+      throw new Error(`Request timeout: ChatGPT page took too long to load. This may be due to network issues or bot detection.`);
+    } else if (error.message?.includes('Protocol error')) {
+      throw new Error(`Browser protocol error: This may indicate resource constraints in the serverless environment.`);
+    } else if (error.message?.includes('Navigation timeout')) {
+      throw new Error(`Navigation timeout: The ChatGPT page failed to load within the time limit.`);
+    } else {
+      throw new Error(`Puppeteer parsing failed: ${error.message || 'Unknown error'}`);
+    }
   } finally {
     if (browser) {
-      await browser.close();
+      try {
+        await browser.close();
+      } catch (closeError) {
+        console.warn("Failed to close browser:", closeError);
+      }
     }
   }
 }

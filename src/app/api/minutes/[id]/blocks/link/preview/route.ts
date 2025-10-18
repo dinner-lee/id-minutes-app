@@ -196,6 +196,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
         try {
           // Try Puppeteer parsing first (best for dynamic content)
+          console.log("Attempting Puppeteer parsing...");
           const raw = await fetchChatGPTSharePuppeteer(url);
           
           // Check if this is a manual input required response
@@ -225,12 +226,41 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             segments: result.segments,
           });
         } catch (e: any) {
+          console.error("Puppeteer parsing failed:", e);
+          
+          // Try Cheerio fallback if Puppeteer fails
+          try {
+            console.log("Attempting Cheerio fallback...");
+            const { fetchChatGPTShareCheerio } = await import("@/lib/chatgpt-ingest");
+            const raw = await fetchChatGPTShareCheerio(url);
+            
+            if (raw.messages.length > 0) {
+              const result = await analyzeWithTurnClassification(raw);
+              return NextResponse.json({
+                ok: true,
+                mode: "link_cheerio",
+                addedByName: me.name || me.email,
+                title: result.title,
+                pairs: result.pairs,
+                segments: result.segments,
+              });
+            }
+          } catch (cheerioError) {
+            console.error("Cheerio fallback also failed:", cheerioError);
+          }
+          
           // All methods failed — instruct client to show manual paste UI.
           return NextResponse.json(
             { 
               ok: false, 
               needsManual: true, 
-              error: `Could not parse share page: ${e?.message || "Unknown error"}` 
+              error: `Could not parse share page: ${e?.message || "Unknown error"}`,
+              suggestions: [
+                "The ChatGPT page may be using bot detection or require JavaScript",
+                "Try copying the conversation text manually",
+                "Ensure the share link is publicly accessible",
+                "Check if the link has expired or been made private"
+              ]
             },
             { status: 422 }
           );
