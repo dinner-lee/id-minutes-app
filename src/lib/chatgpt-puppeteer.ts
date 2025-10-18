@@ -41,8 +41,22 @@ export async function fetchChatGPTSharePuppeteer(url: string): Promise<SharePayl
       console.log("Configuring Puppeteer for Vercel...");
       
       try {
-        const executablePath = await chromium.executablePath();
-        console.log("Chromium executable path:", executablePath);
+        // Try to get Chromium executable path with better error handling
+        let executablePath;
+        try {
+          executablePath = await chromium.executablePath();
+          console.log("Chromium executable path:", executablePath);
+        } catch (chromiumError) {
+          console.error("Failed to get Chromium executable path:", chromiumError);
+          // Try alternative path
+          try {
+            executablePath = await chromium.executablePath('/tmp/chromium');
+            console.log("Alternative Chromium executable path:", executablePath);
+          } catch (altError) {
+            console.error("Alternative path also failed:", altError);
+            throw new Error(`Chromium binary not available: ${chromiumError.message}`);
+          }
+        }
         
         browser = await puppeteer.launch({
           args: [

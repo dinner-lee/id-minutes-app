@@ -324,23 +324,24 @@ async function extractConversationDataFromHTML($: cheerio.Root, html: string): P
   // Strategy 2: Look for conversation elements in DOM with more comprehensive selectors
       if (messages.length === 0) {
         const messageSelectors = [
+          // ChatGPT specific selectors (most reliable)
           '[data-message-author-role]',
           '[data-testid*="message"]',
           '[data-testid*="conversation"]',
-      '.conversation-turn',
+          '[data-message-id]',
+          '.group\\/conversation-turn',
+          '.group\\/message',
+          // Generic conversation selectors
+          '.conversation-turn',
           '.message',
           '[class*="message"]',
-      '[class*="turn"]',
+          '[class*="turn"]',
           '[class*="chat"]',
-          'div[role="presentation"]',
-      '[role="listitem"]',
-      // ChatGPT specific selectors
-      '[data-message-id]',
-      '.group\\/conversation-turn',
-      '.group\\/message',
-      // More generic patterns
-      'div[class*="group"] div[class*="text"]',
-      'div[class*="flex"] div[class*="text"]'
+          // Avoid these problematic selectors that catch JS code
+          // 'div[role="presentation"]',
+          // '[role="listitem"]',
+          // 'div[class*="group"] div[class*="text"]',
+          // 'div[class*="flex"] div[class*="text"]'
         ];
 
         for (const selector of messageSelectors) {
@@ -352,9 +353,9 @@ async function extractConversationDataFromHTML($: cheerio.Root, html: string): P
           const $el = $(element);
           const text = $el.text()?.trim();
           
-          // Filter out navigation and UI elements
-          if (text && text.length > 10 && text.length < 5000) {
-            if (!/Continue this conversation|Log in|Sign up|Share|Copy link|Download|Regenerate|Skip to content|ChatGPT|Attach|Search|Study|Voice|By messaging ChatGPT|Terms|Privacy Policy|Loading|Error|Try again/i.test(text)) {
+        // Filter out navigation, UI elements, and JavaScript code
+        if (text && text.length > 10 && text.length < 5000) {
+          if (!/Continue this conversation|Log in|Sign up|Share|Copy link|Download|Regenerate|Skip to content|ChatGPT|Attach|Search|Study|Voice|By messaging ChatGPT|Terms|Privacy Policy|Loading|Error|Try again|window\.__oai|requestAnimationFrame|function\(\)|Date\.now\(\)|__oai_logHTML|__oai_SSR_HTML|__oai_logTTI|__oai_SSR_TTI/i.test(text)) {
               
               // Determine role from various attributes and content patterns
                 let role: "user" | "assistant" = "assistant";
