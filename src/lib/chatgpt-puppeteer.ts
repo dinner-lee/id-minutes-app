@@ -1,4 +1,5 @@
 import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 
 export interface SharePayload {
   title: string;
@@ -39,50 +40,13 @@ export async function fetchChatGPTSharePuppeteer(url: string): Promise<SharePayl
       // Use Chromium for Vercel deployment with optimized settings
       console.log("Configuring Puppeteer for Vercel...");
       
-      // Try multiple Chromium packages
-      let chromiumConfig = null;
-      
-      // Try @sparticuz/chromium first
       try {
-        const sparticuzChromium = await import('@sparticuz/chromium');
-        const executablePath = await sparticuzChromium.default.executablePath();
-        console.log("Using @sparticuz/chromium, executable path:", executablePath);
+        const executablePath = await chromium.executablePath();
+        console.log("Chromium executable path:", executablePath);
         
-        chromiumConfig = {
-          args: sparticuzChromium.default.args,
-          defaultViewport: sparticuzChromium.default.defaultViewport,
-          executablePath: executablePath,
-          headless: sparticuzChromium.default.headless,
-        };
-      } catch (sparticuzError) {
-        console.log("@sparticuz/chromium failed, trying chrome-aws-lambda:", sparticuzError.message);
-        
-        // Try chrome-aws-lambda as fallback
-        try {
-          const chromeAwsLambda = await import('chrome-aws-lambda');
-          const executablePath = await chromeAwsLambda.default.executablePath;
-          console.log("Using chrome-aws-lambda, executable path:", executablePath);
-          
-          chromiumConfig = {
-            args: chromeAwsLambda.default.args,
-            defaultViewport: chromeAwsLambda.default.defaultViewport,
-            executablePath: executablePath,
-            headless: chromeAwsLambda.default.headless,
-          };
-        } catch (chromeAwsError) {
-          console.error("Both Chromium packages failed:", chromeAwsError.message);
-          throw new Error(`No Chromium binary available on Vercel. @sparticuz/chromium: ${sparticuzError.message}, chrome-aws-lambda: ${chromeAwsError.message}`);
-        }
-      }
-      
-      if (!chromiumConfig) {
-        throw new Error("Failed to configure Chromium for Vercel");
-      }
-      
-      try {
         browser = await puppeteer.launch({
           args: [
-            ...chromiumConfig.args,
+            ...chromium.args,
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
@@ -99,9 +63,9 @@ export async function fetchChatGPTSharePuppeteer(url: string): Promise<SharePayl
             '--memory-pressure-off',
             '--max_old_space_size=512'
           ],
-          defaultViewport: chromiumConfig.defaultViewport,
-          executablePath: chromiumConfig.executablePath,
-          headless: chromiumConfig.headless,
+          defaultViewport: chromium.defaultViewport,
+          executablePath: executablePath,
+          headless: chromium.headless,
           ignoreHTTPSErrors: true,
           timeout: 30000, // 30 second launch timeout
         });
@@ -343,36 +307,11 @@ export async function debugChatGPTSharePuppeteer(url: string): Promise<{
     const isVercel = process.env.VERCEL === '1';
     
     if (isVercel) {
-      // Try multiple Chromium packages for debug function too
-      let chromiumConfig = null;
-      
-      try {
-        const sparticuzChromium = await import('@sparticuz/chromium');
-        chromiumConfig = {
-          args: sparticuzChromium.default.args,
-          defaultViewport: sparticuzChromium.default.defaultViewport,
-          executablePath: await sparticuzChromium.default.executablePath(),
-          headless: sparticuzChromium.default.headless,
-        };
-      } catch (sparticuzError) {
-        try {
-          const chromeAwsLambda = await import('chrome-aws-lambda');
-          chromiumConfig = {
-            args: chromeAwsLambda.default.args,
-            defaultViewport: chromeAwsLambda.default.defaultViewport,
-            executablePath: chromeAwsLambda.default.executablePath,
-            headless: chromeAwsLambda.default.headless,
-          };
-        } catch (chromeAwsError) {
-          throw new Error(`No Chromium binary available for debug: ${sparticuzError.message}`);
-        }
-      }
-      
       browser = await puppeteer.launch({
-        args: chromiumConfig.args,
-        defaultViewport: chromiumConfig.defaultViewport,
-        executablePath: chromiumConfig.executablePath,
-        headless: chromiumConfig.headless,
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
         ignoreHTTPSErrors: true,
       });
     } else {
