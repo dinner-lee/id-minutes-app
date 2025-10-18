@@ -247,25 +247,46 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           } catch (puppeteerError) {
             console.error("Puppeteer fallback also failed:", puppeteerError);
             
-            // Try Cheerio as final fallback
+            // Try simple fetch fallback
             try {
-              console.log("Attempting Cheerio final fallback...");
-              const { fetchChatGPTShareCheerio } = await import("@/lib/chatgpt-ingest");
-              const raw = await fetchChatGPTShareCheerio(url);
+              console.log("Attempting simple fetch fallback...");
+              const { fetchChatGPTShareSimple } = await import("@/lib/chatgpt-simple");
+              const raw = await fetchChatGPTShareSimple(url);
               
               if (raw.messages.length > 0) {
                 const result = await analyzeWithTurnClassification(raw);
                 return NextResponse.json({
                   ok: true,
-                  mode: "link_cheerio",
+                  mode: "link_simple",
                   addedByName: me.name || me.email,
                   title: result.title,
                   pairs: result.pairs,
                   segments: result.segments,
                 });
               }
-            } catch (cheerioError) {
-              console.error("Cheerio fallback also failed:", cheerioError);
+            } catch (simpleError) {
+              console.error("Simple fetch fallback failed:", simpleError);
+              
+              // Try Cheerio as final fallback
+              try {
+                console.log("Attempting Cheerio final fallback...");
+                const { fetchChatGPTShareCheerio } = await import("@/lib/chatgpt-ingest");
+                const raw = await fetchChatGPTShareCheerio(url);
+                
+                if (raw.messages.length > 0) {
+                  const result = await analyzeWithTurnClassification(raw);
+                  return NextResponse.json({
+                    ok: true,
+                    mode: "link_cheerio",
+                    addedByName: me.name || me.email,
+                    title: result.title,
+                    pairs: result.pairs,
+                    segments: result.segments,
+                  });
+                }
+              } catch (cheerioError) {
+                console.error("Cheerio fallback also failed:", cheerioError);
+              }
             }
             
             // All methods failed — instruct client to show manual paste UI.

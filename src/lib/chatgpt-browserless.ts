@@ -26,8 +26,14 @@ export async function fetchChatGPTShareBrowserless(url: string): Promise<SharePa
   const BROWSERLESS_URL = process.env.BROWSERLESS_URL || 'https://production-sfo.browserless.io';
   const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN;
   
+  console.log("Browserless.io configuration:", {
+    url: BROWSERLESS_URL,
+    tokenExists: !!BROWSERLESS_TOKEN,
+    tokenLength: BROWSERLESS_TOKEN ? BROWSERLESS_TOKEN.length : 0
+  });
+  
   if (!BROWSERLESS_TOKEN) {
-    throw new Error("BROWSERLESS_TOKEN environment variable is required for Vercel deployment");
+    throw new Error("BROWSERLESS_TOKEN environment variable is required for Vercel deployment. Please set it in Vercel dashboard → Project Settings → Environment Variables");
   }
 
   console.log("Using Browserless.io for ChatGPT parsing...");
