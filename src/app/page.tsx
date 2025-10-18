@@ -1,103 +1,124 @@
-import Image from "next/image";
+export const runtime = "nodejs";
 
-export default function Home() {
+import Link from "next/link";
+import { prisma } from "@/lib/prisma";
+
+/** Dev-only helper. Replace with real session lookup (NextAuth) later. */
+async function getOrCreateDevUser() {
+  const email = process.env.DEV_USER_EMAIL || "dev@example.com";
+  let user = await prisma.user.findUnique({ where: { email } });
+  if (!user) {
+    user = await prisma.user.create({ data: { email, name: "Dev User" } });
+  }
+  return user;
+}
+
+export default async function HomePage() {
+  const me = await getOrCreateDevUser();
+
+  // Fetch projects where I'm owner or a member
+  const projects = await prisma.project.findMany({
+    where: {
+      OR: [
+        { ownerId: me.id },
+        { memberships: { some: { userId: me.id } } },
+      ],
+    },
+    orderBy: { updatedAt: "desc" },
+    include: {
+      _count: { select: { minutes: true, memberships: true } },
+    },
+  });
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <div className="min-h-[100dvh] bg-gradient-to-b from-white to-slate-50">
+      <header className="border-b bg-white/70 backdrop-blur">
+        <div className="mx-auto max-w-5xl px-4 py-4 flex items-center justify-between">
+          <h1 className="text-xl font-semibold">ID Minutes — Dashboard</h1>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/projects/new/step1"
+              className="inline-flex items-center rounded-md bg-black text-white px-3 py-2 text-sm hover:bg-black/90"
+            >
+              + New project
+            </Link>
+          </div>
         </div>
+      </header>
+
+      <main className="mx-auto max-w-5xl px-4 py-8">
+        {projects.length === 0 ? (
+          <EmptyState />
+        ) : (
+          <>
+            <h2 className="text-lg font-medium mb-3">Your projects</h2>
+            <ul className="grid gap-4 md:grid-cols-2">
+              {projects.map((p) => (
+                <li key={p.id} className="rounded-xl border bg-white p-4 hover:shadow-sm transition">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <h3 className="font-semibold truncate">{p.title}</h3>
+                      <p className="text-sm text-muted-foreground line-clamp-2">{p.purpose}</p>
+                    </div>
+                    <span className="shrink-0 text-[11px] text-muted-foreground">
+                      Updated {new Date(p.updatedAt).toLocaleDateString()}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
+                    <span>
+                      {p._count.minutes} minute{p._count.minutes === 1 ? "" : "s"}
+                    </span>
+                    <span>
+                      {p._count.memberships + 1} member
+                      {p._count.memberships + 1 === 1 ? "" : "s"}
+                    </span>
+                    <span>
+                      {new Date(p.startDate).toLocaleDateString()} →{" "}
+                      {new Date(p.endDate).toLocaleDateString()}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 flex items-center gap-2">
+                    <Link
+                      href={`/projects/${p.id}`}
+                      className="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+                    >
+                      Open workspace
+                    </Link>
+                    <Link
+                      href={`/projects/new/step3?projectId=${p.id}`}
+                      className="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+                      title="Adjust model timeline"
+                    >
+                      Edit timeline
+                    </Link>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="mx-auto max-w-2xl text-center py-24">
+      <h2 className="text-2xl font-semibold">Welcome 👋</h2>
+      <p className="text-sm text-muted-foreground mt-2">
+        Create your first project to start managing collaborative instructional design minutes.
+      </p>
+      <div className="mt-6">
+        <Link
+          href="/projects/new/step1"
+          className="inline-flex items-center rounded-md bg-black text-white px-4 py-2 text-sm hover:bg-black/90"
         >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          Create a project
+        </Link>
+      </div>
     </div>
   );
 }

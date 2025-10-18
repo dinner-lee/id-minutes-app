@@ -1,0 +1,203 @@
+// ---------- Prisma Client ----------
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ---------- Data Source (Neon Postgres) ----------
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")   // pooled (PgBouncer) — app runtime
+  directUrl = env("DIRECT_URL")     // direct (for prisma migrate)
+  // shadowDatabaseUrl = env("SHADOW_DATABASE_URL") // optional
+}
+
+// ==================================================
+// Enums
+// ==================================================
+
+enum BlockType {
+  CHATGPT
+  WEBSITE
+  FILE
+}
+
+enum ChatPurpose {
+  INFO_SEEKING
+  IDEATION
+  DATA_ANALYSIS
+  ELABORATION
+  CODE_HELP
+  OTHER
+}
+
+// ==================================================
+// Models
+// ==================================================
+
+model User {
+  id           String       @id @default(cuid())
+  name         String?
+  email        String       @unique
+  image        String?
+
+  // Relations
+  memberships  Membership[]
+  projects     Project[]    @relation("OwnerProjects")
+  minutes      Minute[]     @relation("MinuteAuthors")
+  blocks       Block[]
+
+  createdAt    DateTime     @default(now())
+
+  @@index([email])
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  ownerId     String
+  owner       User          @relation("OwnerProjects", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  title       String
+  purpose     String
+  startDate   DateTime
+  endDate     DateTime
+
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  memberships Membership[]
+  models      InstructionalModel[]
+  stages      Stage[]
+  minutes     Minute[]
+
+  @@index([ownerId])
+  @@index([updatedAt])
+}
+
+model Membership {
+  id        String   @id @default(cuid())
+  userId    String
+  projectId String
+  role      String   // "owner" | "editor" | "viewer"
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, projectId]) // a user has one membership per project
+  @@index([projectId])
+  @@index([userId])
+}
+
+model InstructionalModel {
+  id        String  @id @default(cuid())
+  projectId String
+  name      String   // "ADDIE" | "Dick, Carey & Carey" | "RPISD" | "Custom"
+  config    Json     // canonical stages etc.
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([name])
+}
+
+model Stage {
+  id          String   @id @default(cuid())
+  projectId   String
+  name        String
+  order       Int
+  plannedDate DateTime?
+
+  createdAt   DateTime @default(now())
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, order])
+  @@index([plannedDate])
+}
+
+model Minute {
+  id         String   @id @default(cuid())
+  projectId  String
+  authorId   String
+  title      String
+  stageId    String?
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Keep a snapshot for export/SEO; realtime content lives in Yjs.
+  markdown   String   @default("")
+
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  author     User     @relation("MinuteAuthors", fields: [authorId], references: [id], onDelete: SetNull)
+  blocks     Block[]
+
+  @@index([projectId, updatedAt])
+  @@index([authorId])
+  @@index([stageId])
+}
+
+model Block {
+  id           String       @id @default(cuid())
+  minuteId     String
+  type         BlockType
+  createdById  String
+
+  purpose      ChatPurpose?
+  providerTag  String?      // e.g. "ChatGPT", "URL", "UPLOAD"
+  title        String?
+  url          String?
+  thumbnailUrl String?
+  isRemix      Boolean      @default(false)
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  minute       Minute       @relation(fields: [minuteId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  // Optional one-to-one detail records
+  chat         ChatThread?
+  file         FileAsset?
+
+  @@index([minuteId, updatedAt])
+  @@index([type])
+  @@index([createdById])
+  @@index([isRemix])
+}
+
+model ChatThread {
+  id          String  @id @default(cuid())
+  blockId     String  @unique
+
+  canonicalId String? // hash of canonical head (for remix detection)
+  raw         Json    // original messages (unaltered)
+  flows       Json    // derived & editable flows (array)
+  notes       String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  block       Block   @relation(fields: [blockId], references: [id], onDelete: Cascade)
+
+  @@index([canonicalId])
+}
+
+model FileAsset {
+  id         String  @id @default(cuid())
+  blockId    String  @unique
+
+  key        String  // storage key (S3/R2/etc.)
+  filename   String
+  mimeType   String
+  size       Int
+  textPreview String?
+
+  createdAt  DateTime @default(now())
+
+  block      Block   @relation(fields: [blockId], references: [id], onDelete: Cascade)
+
+  @@index([key])
+}
