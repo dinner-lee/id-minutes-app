@@ -195,75 +195,96 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
 
         try {
-          // Try Puppeteer parsing first (best for dynamic content)
-          console.log("Attempting Puppeteer parsing...");
-          const raw = await fetchChatGPTSharePuppeteer(url);
-          
-          // Check if this is a manual input required response
-          if (raw.messages.length === 1 && raw.messages[0].role === "system") {
-            return NextResponse.json({
-              ok: false,
-              needsManual: true,
-              extractedTitle: raw.title,
-              error: "ChatGPT conversations load dynamically with JavaScript. Please copy and paste the conversation content manually.",
-              instructions: [
-                "1. Open the ChatGPT share URL in your browser",
-                "2. Copy the conversation text",
-                "3. Paste it in the manual input field below",
-                "4. The system will parse and analyze the conversation"
-              ]
-            }, { status: 422 });
-          }
+          // Try Browserless.io first for Vercel (most reliable)
+          console.log("Attempting Browserless.io parsing...");
+          const { fetchChatGPTShareBrowserless } = await import("@/lib/chatgpt-browserless");
+          const raw = await fetchChatGPTShareBrowserless(url);
           
           // If we got actual conversation data, analyze it with turn-by-turn classification
           const result = await analyzeWithTurnClassification(raw);
           return NextResponse.json({
             ok: true,
-            mode: "link_puppeteer",
+            mode: "link_browserless",
             addedByName: me.name || me.email,
             title: result.title,
             pairs: result.pairs,
             segments: result.segments,
           });
-        } catch (e: any) {
-          console.error("Puppeteer parsing failed:", e);
+        } catch (browserlessError) {
+          console.error("Browserless.io parsing failed:", browserlessError);
           
-          // Try Cheerio fallback if Puppeteer fails
+          // Try Puppeteer as fallback
           try {
-            console.log("Attempting Cheerio fallback...");
-            const { fetchChatGPTShareCheerio } = await import("@/lib/chatgpt-ingest");
-            const raw = await fetchChatGPTShareCheerio(url);
+            console.log("Attempting Puppeteer fallback...");
+            const raw = await fetchChatGPTSharePuppeteer(url);
             
-            if (raw.messages.length > 0) {
-              const result = await analyzeWithTurnClassification(raw);
+            // Check if this is a manual input required response
+            if (raw.messages.length === 1 && raw.messages[0].role === "system") {
               return NextResponse.json({
-                ok: true,
-                mode: "link_cheerio",
-                addedByName: me.name || me.email,
-                title: result.title,
-                pairs: result.pairs,
-                segments: result.segments,
-              });
+                ok: false,
+                needsManual: true,
+                extractedTitle: raw.title,
+                error: "ChatGPT conversations load dynamically with JavaScript. Please copy and paste the conversation content manually.",
+                instructions: [
+                  "1. Open the ChatGPT share URL in your browser",
+                  "2. Copy the conversation text",
+                  "3. Paste it in the manual input field below",
+                  "4. The system will parse and analyze the conversation"
+                ]
+              }, { status: 422 });
             }
-          } catch (cheerioError) {
-            console.error("Cheerio fallback also failed:", cheerioError);
+            
+            // If we got actual conversation data, analyze it with turn-by-turn classification
+            const result = await analyzeWithTurnClassification(raw);
+            return NextResponse.json({
+              ok: true,
+              mode: "link_puppeteer",
+              addedByName: me.name || me.email,
+              title: result.title,
+              pairs: result.pairs,
+              segments: result.segments,
+            });
+          } catch (puppeteerError) {
+            console.error("Puppeteer fallback also failed:", puppeteerError);
+            
+            // Try Cheerio as final fallback
+            try {
+              console.log("Attempting Cheerio final fallback...");
+              const { fetchChatGPTShareCheerio } = await import("@/lib/chatgpt-ingest");
+              const raw = await fetchChatGPTShareCheerio(url);
+              
+              if (raw.messages.length > 0) {
+                const result = await analyzeWithTurnClassification(raw);
+                return NextResponse.json({
+                  ok: true,
+                  mode: "link_cheerio",
+                  addedByName: me.name || me.email,
+                  title: result.title,
+                  pairs: result.pairs,
+                  segments: result.segments,
+                });
+              }
+            } catch (cheerioError) {
+              console.error("Cheerio fallback also failed:", cheerioError);
+            }
+            
+            // All methods failed — instruct client to show manual paste UI.
+            return NextResponse.json(
+              { 
+                ok: false, 
+                needsManual: true, 
+                error: `All parsing methods failed. Browserless: ${browserlessError.message}, Puppeteer: ${puppeteerError.message}`,
+                suggestions: [
+                  "The ChatGPT page may be using bot detection or require JavaScript",
+                  "Try copying the conversation text manually",
+                  "Ensure the share link is publicly accessible",
+                  "Check if the link has expired or been made private",
+                  "Consider setting up BROWSERLESS_TOKEN for better parsing"
+                ]
+              },
+              { status: 422 }
+            );
           }
-          
-          // All methods failed — instruct client to show manual paste UI.
-          return NextResponse.json(
-            { 
-              ok: false, 
-              needsManual: true, 
-              error: `Could not parse share page: ${e?.message || "Unknown error"}`,
-              suggestions: [
-                "The ChatGPT page may be using bot detection or require JavaScript",
-                "Try copying the conversation text manually",
-                "Ensure the share link is publicly accessible",
-                "Check if the link has expired or been made private"
-              ]
-            },
-            { status: 422 }
-          );
         }
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || "Preview failed" }, { status: 400 });
