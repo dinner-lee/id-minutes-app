@@ -38,13 +38,34 @@ export async function fetchChatGPTSharePuppeteer(url: string): Promise<SharePayl
     
     if (isVercel) {
       // Use Chromium for Vercel deployment
-      browser = await puppeteer.launch({
-        args: chromium.args,
-        defaultViewport: chromium.defaultViewport,
-        executablePath: await chromium.executablePath(),
-        headless: chromium.headless,
-        ignoreHTTPSErrors: true,
-      });
+      console.log("Configuring Puppeteer for Vercel...");
+      
+      try {
+        const executablePath = await chromium.executablePath();
+        console.log("Chromium executable path:", executablePath);
+        
+        browser = await puppeteer.launch({
+          args: [
+            ...chromium.args,
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-gpu'
+          ],
+          defaultViewport: chromium.defaultViewport,
+          executablePath: executablePath,
+          headless: chromium.headless,
+          ignoreHTTPSErrors: true,
+        });
+        console.log("Puppeteer launched successfully on Vercel");
+      } catch (error) {
+        console.error("Failed to launch Puppeteer on Vercel:", error);
+        throw error;
+      }
     } else {
       // Use local Chrome for development
       browser = await puppeteer.launch({
