@@ -191,13 +191,13 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
         
         // Navigate to the ChatGPT share URL with more lenient wait condition
         await page.goto(url, { 
-          waitUntil: 'commit', // More lenient than domcontentloaded
+          waitUntil: 'domcontentloaded', // Standard Puppeteer option
           timeout: 45000 
         });
         
         // Wait for page to stabilize after SPA transition
         console.log("Waiting for page to stabilize...");
-        await page.waitForTimeout(2000);
+        await new Promise(resolve => setTimeout(resolve, 2000));
         
         // Wait for conversation content to load with multiple selectors
         console.log("Waiting for conversation content to load...");
@@ -217,7 +217,7 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
         }
         
         // Additional wait for dynamic content
-        await page.waitForTimeout(3000);
+        await new Promise(resolve => setTimeout(resolve, 3000));
         
         navigationSuccess = true;
         break;
@@ -228,7 +228,7 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
         
         if (attempt < 3) {
           console.log("Retrying navigation...");
-          await page.waitForTimeout(1000);
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
     }
