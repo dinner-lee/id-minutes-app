@@ -40,9 +40,17 @@ async function manualChromiumExtraction() {
     
     console.log('[manual-extraction] Critical libraries found:', foundLibs);
     
-    // Specifically check for libnss3.so
-    const libnss3Exists = await fs.access('/tmp/libnss3.so').then(() => true).catch(() => false);
-    console.log('[manual-extraction] /tmp/libnss3.so exists:', libnss3Exists);
+    // Specifically check for libnss3.so in /tmp/lib
+    const libnss3Exists = await fs.access('/tmp/lib/libnss3.so').then(() => true).catch(() => false);
+    console.log('[manual-extraction] /tmp/lib/libnss3.so exists:', libnss3Exists);
+    
+    // Check what's actually in /tmp/lib
+    try {
+      const libFiles = await fs.readdir('/tmp/lib');
+      console.log('[manual-extraction] /tmp/lib files:', libFiles.slice(0, 10));
+    } catch (e) {
+      console.log('[manual-extraction] /tmp/lib directory error:', e.message);
+    }
     
     // Extract swiftshader.tar.br if it exists
     const swiftshaderPath = './node_modules/@sparticuz/chromium/bin/swiftshader.tar.br';
@@ -105,6 +113,7 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
       // Environment variable correction
       process.env.LD_LIBRARY_PATH = [
         '/tmp',
+        '/tmp/lib',
         '/tmp/swiftshader',
         process.env.LD_LIBRARY_PATH,
       ].filter(Boolean).join(':');
