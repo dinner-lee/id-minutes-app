@@ -19,5 +19,6 @@
       "maxDuration": 30
     }
   },
-  "crons": []
+  "crons": [],
+  "outputDirectory": ".next"
 }

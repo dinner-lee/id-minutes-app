@@ -5,6 +5,15 @@ import { SharePayload, ChatRole } from './chatgpt-ingest';
 async function debugDump() {
   const fs = await import('node:fs/promises');
   
+  // First check if chromium bundle files exist in the function bundle
+  try {
+    const bundleCheck = await fs.access('./node_modules/@sparticuz/chromium/bin/al2023.tar.br');
+    console.log('[debug] al2023.tar.br exists in bundle: true');
+  } catch (e) {
+    console.log('[debug] al2023.tar.br exists in bundle: false - BUNDLE MISSING!');
+    console.log('[debug] This is why libraries are not being extracted');
+  }
+  
   // Check /tmp directory for extracted libraries
   try {
     const tmpFiles = await fs.readdir('/tmp');
