@@ -29,8 +29,20 @@ async function analyzeWithTurnClassification(raw: SharePayload) {
   console.log("Analyze function - raw messages:", raw.messages.length);
   console.log("First few raw messages:", raw.messages.slice(0, 2));
   
+  // Debug: Log all raw messages
+  console.log("All raw messages:");
+  raw.messages.forEach((msg, index) => {
+    console.log(`Message ${index}: role=${msg.role}, content="${msg.content.substring(0, 100)}..."`);
+  });
+  
   const pairs = messagesToPairs(raw.messages);
   console.log("After messagesToPairs:", pairs.length);
+  
+  // Debug: Log all pairs
+  console.log("All pairs:");
+  pairs.forEach((pair, index) => {
+    console.log(`Pair ${index}: userIndex=${pair.userIndex}, userText="${pair.userText.substring(0, 50)}...", assistantTexts=${pair.assistantTexts.length}`);
+  });
   
   // Classify each turn individually
   console.log("Classifying each turn individually...");

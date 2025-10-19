@@ -579,6 +579,16 @@ export function messagesToPairs(messages: ChatMsg[]): Pair[] {
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
     
+    // Skip system messages
+    if (msg.role === "system") {
+      continue;
+    }
+    
+    // Skip messages that start with "You said:" (these are usually duplicates or UI artifacts)
+    if (msg.content.trim().startsWith("You said:")) {
+      continue;
+    }
+    
     if (msg.role === "user") {
       // Save previous pair if exists and has assistant responses
       if (currentPair && currentPair.userText && currentPair.assistantTexts && currentPair.assistantTexts.length > 0) {
