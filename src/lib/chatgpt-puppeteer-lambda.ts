@@ -1,47 +1,63 @@
 // src/lib/chatgpt-puppeteer-lambda.ts
 import { SharePayload, ChatRole } from './chatgpt-ingest';
 
-// Debug function to check chromium extraction
-async function debugDump() {
+// Manual extraction function to force chromium library extraction
+async function manualChromiumExtraction() {
   const fs = await import('node:fs/promises');
+  const path = await import('node:path');
+  const tar = await import('tar');
   
-  // First check if chromium bundle files exist in the function bundle
   try {
-    const bundleCheck = await fs.access('./node_modules/@sparticuz/chromium/bin/al2023.tar.br');
-    console.log('[debug] al2023.tar.br exists in bundle: true');
-  } catch (e) {
-    console.log('[debug] al2023.tar.br exists in bundle: false - BUNDLE MISSING!');
-    console.log('[debug] This is why libraries are not being extracted');
-  }
-  
-  // Check /tmp directory for extracted libraries
-  try {
-    const tmpFiles = await fs.readdir('/tmp');
-    const chromiumFiles = tmpFiles.filter(file => 
-      file.includes('chromium') || 
-      file.includes('lib') || 
-      file.includes('swiftshader') ||
-      file.endsWith('.so')
-    );
-    console.log('[debug] /tmp chromium-related files:', chromiumFiles);
+    console.log('[manual-extraction] Starting manual chromium extraction...');
     
-    // Check for critical libraries
+    // Check if al2023.tar.br exists in bundle
+    const bundlePath = './node_modules/@sparticuz/chromium/bin/al2023.tar.br';
+    const bundleExists = await fs.access(bundlePath).then(() => true).catch(() => false);
+    
+    if (!bundleExists) {
+      console.log('[manual-extraction] al2023.tar.br not found in bundle');
+      return false;
+    }
+    
+    console.log('[manual-extraction] al2023.tar.br found, extracting...');
+    
+    // Extract al2023.tar.br to /tmp
+    await tar.extract({
+      file: bundlePath,
+      cwd: '/tmp',
+      sync: false
+    });
+    
+    console.log('[manual-extraction] al2023.tar.br extraction completed');
+    
+    // Check if critical libraries were extracted
+    const tmpFiles = await fs.readdir('/tmp');
     const criticalLibs = ['libnss3.so', 'libssl3.so', 'libcrypto.so'];
     const foundLibs = criticalLibs.filter(lib => 
       tmpFiles.some(file => file.includes(lib))
     );
-    console.log('[debug] Critical libraries found:', foundLibs);
     
-    // Check swiftshader directory
-    try {
-      const swiftshaderFiles = await fs.readdir('/tmp/swiftshader');
-      console.log('[debug] /tmp/swiftshader files count:', swiftshaderFiles.length);
-    } catch (e) {
-      console.log('[debug] /tmp/swiftshader not found:', e.message);
+    console.log('[manual-extraction] Critical libraries found:', foundLibs);
+    
+    // Extract swiftshader.tar.br if it exists
+    const swiftshaderPath = './node_modules/@sparticuz/chromium/bin/swiftshader.tar.br';
+    const swiftshaderExists = await fs.access(swiftshaderPath).then(() => true).catch(() => false);
+    
+    if (swiftshaderExists) {
+      console.log('[manual-extraction] Extracting swiftshader.tar.br...');
+      await tar.extract({
+        file: swiftshaderPath,
+        cwd: '/tmp',
+        sync: false
+      });
+      console.log('[manual-extraction] swiftshader.tar.br extraction completed');
     }
     
-  } catch (e) {
-    console.log('[debug] Error checking /tmp:', e.message);
+    return foundLibs.length > 0;
+    
+  } catch (error) {
+    console.log('[manual-extraction] Error during manual extraction:', error);
+    return false;
   }
 }
 
@@ -104,8 +120,11 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
       console.log('[chromium] execPath =', execPath);
       console.log('[chromium] Auto-extraction completed');
       
-      // Now debug should work since /tmp/chromium/lib should exist
-      await debugDump();
+      // Force manual extraction to ensure libraries are properly extracted
+      const manualExtractionSuccess = await manualChromiumExtraction();
+      if (!manualExtractionSuccess) {
+        console.log('[chromium] Manual extraction failed, but continuing with launch...');
+      }
       
       // Launch with canonical settings
       browser = await puppeteer.default.launch({
