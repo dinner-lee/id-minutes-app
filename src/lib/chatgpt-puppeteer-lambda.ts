@@ -59,21 +59,8 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
         console.log('Error checking chromium directory:', e);
       }
       
-      // Set up library path for chromium dependencies
-      const chromiumArgs = [
-        ...chromium.default.args,
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-web-security',
-        '--disable-features=VizDisplayCompositor',
-        '--single-process',
-        '--no-zygote',
-        '--disable-background-timer-throttling',
-        '--disable-backgrounding-occluded-windows',
-        '--disable-renderer-backgrounding'
-      ];
+      // Use chromium's default args without duplication
+      const chromiumArgs = chromium.default.args;
       
       console.log('Chromium args:', chromiumArgs);
       
@@ -107,17 +94,38 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
       }
       
       // Set up environment variables for library loading
+      // Remove CHROME_BIN to allow chromium auto-extraction
       const env = {
         ...process.env,
         LD_LIBRARY_PATH: `${chromiumLibPath}:${chromiumSwiftshaderPath}`,
-        CHROME_BIN: executablePath,
-        CHROME_PATH: executablePath,
+        // CHROME_BIN: executablePath, // REMOVED - this prevents auto-extraction
+        // CHROME_PATH: executablePath, // REMOVED - this prevents auto-extraction
       };
+      
+      // Remove CHROME_BIN from process.env if it exists
+      if (env.CHROME_BIN) {
+        console.log('Removing CHROME_BIN to allow chromium auto-extraction');
+        delete env.CHROME_BIN;
+      }
+      if (env.CHROME_PATH) {
+        console.log('Removing CHROME_PATH to allow chromium auto-extraction');
+        delete env.CHROME_PATH;
+      }
       
       console.log('Environment variables:', { 
         LD_LIBRARY_PATH: env.LD_LIBRARY_PATH,
         CHROME_BIN: env.CHROME_BIN 
       });
+      
+      // Final verification before launch - check if lib directory exists
+      const finalLibCheck = fs.existsSync(chromiumLibPath);
+      if (!finalLibCheck) {
+        console.log('CRITICAL: Chromium lib directory still does not exist after environment setup');
+        console.log('This means the chromium bundle extraction failed completely');
+        throw new Error('Chromium library extraction failed - lib directory not found');
+      }
+      
+      console.log('Chromium lib directory verified - proceeding with browser launch');
       
       browser = await puppeteer.default.launch({
         args: chromiumArgs,
