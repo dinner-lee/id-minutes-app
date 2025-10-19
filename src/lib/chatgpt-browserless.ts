@@ -39,31 +39,81 @@ export async function fetchChatGPTShareBrowserless(url: string): Promise<SharePa
   console.log("Using Browserless.io for ChatGPT parsing...");
 
   try {
-    // Use Browserless.io content endpoint with simpler approach
-    const response = await fetch(`${BROWSERLESS_URL}/content?token=${BROWSERLESS_TOKEN}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        url: url,
-        waitFor: 5000, // Wait 5 seconds for content to load
-        gotoOptions: {
-          waitUntil: 'domcontentloaded',
-          timeout: 30000
+    // Try different Browserless.io endpoints
+    let response;
+    let html;
+    
+    // Method 1: Try the /content endpoint
+    try {
+      console.log("Trying Browserless.io /content endpoint...");
+      response = await fetch(`${BROWSERLESS_URL}/content?token=${BROWSERLESS_TOKEN}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: url,
+          waitFor: 5000,
+          gotoOptions: {
+            waitUntil: 'domcontentloaded',
+            timeout: 30000
+          }
+        })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        html = result.content || result.html || result;
+        console.log("Successfully got content from /content endpoint");
+      } else {
+        throw new Error(`Content endpoint failed: ${response.status}`);
+      }
+    } catch (contentError) {
+      console.log("Content endpoint failed, trying /screenshot endpoint...");
+      
+      // Method 2: Try the /screenshot endpoint (which also returns HTML)
+      try {
+        response = await fetch(`${BROWSERLESS_URL}/screenshot?token=${BROWSERLESS_TOKEN}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            url: url,
+            waitFor: 5000,
+            gotoOptions: {
+              waitUntil: 'domcontentloaded',
+              timeout: 30000
+            }
+          })
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          html = result.content || result.html || result;
+          console.log("Successfully got content from /screenshot endpoint");
+        } else {
+          throw new Error(`Screenshot endpoint failed: ${response.status}`);
         }
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Browserless.io request failed: ${response.status} ${response.statusText}`);
+      } catch (screenshotError) {
+        console.log("Screenshot endpoint failed, trying simple GET...");
+        
+        // Method 3: Try simple GET request
+        response = await fetch(`${BROWSERLESS_URL}/content?token=${BROWSERLESS_TOKEN}&url=${encodeURIComponent(url)}`);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("All Browserless.io methods failed. Last error:", errorText);
+          throw new Error(`All Browserless.io methods failed. Last error: ${response.status} ${response.statusText}. Response: ${errorText}`);
+        }
+        
+        const result = await response.json();
+        html = result.content || result.html || result;
+        console.log("Successfully got content from simple GET");
+      }
     }
 
-    const result = await response.json();
-    console.log("Browserless.io response:", result);
-
-    // Extract HTML content from Browserless.io response
-    const html = result.content || result.html || result;
+    console.log(`Received HTML from Browserless.io: ${html.length} characters`);
     
     if (!html || typeof html !== 'string') {
       throw new Error("No HTML content received from Browserless.io");
