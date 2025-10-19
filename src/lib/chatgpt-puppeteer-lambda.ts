@@ -69,13 +69,17 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
         CHROME_BIN: process.env.CHROME_BIN
       });
       
-      // Debug dump before extraction
+      // ⬇️ This is the "auto-extraction trigger" (no arguments!)
+      const execPath = await chromium.default.executablePath();
+      console.log('[chromium] execPath =', execPath);
+      
+      // Now debug should work since /tmp/chromium exists
       await debugDump('/tmp/chromium');
       
       // Launch with canonical settings
       browser = await puppeteer.default.launch({
         args: chromium.default.args,                         // Only chromium.args!
-        executablePath: await chromium.default.executablePath(), // No arguments! Auto-extraction
+        executablePath: execPath,
         headless: chromium.default.headless,
         defaultViewport: chromium.default.defaultViewport,
         ignoreHTTPSErrors: true,
