@@ -195,23 +195,24 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
 
         try {
-          // Try Playwright first (most reliable for Vercel)
-          console.log("Attempting Playwright parsing...");
-          const { fetchChatGPTSharePlaywright } = await import("@/lib/chatgpt-playwright");
-          const raw = await fetchChatGPTSharePlaywright(url);
+          // Try Simple Fetch first (most reliable for Vercel)
+          console.log("Attempting Simple Fetch parsing...");
+          const { fetchChatGPTShareSimple } = await import("@/lib/chatgpt-simple");
+          const raw = await fetchChatGPTShareSimple(url);
           
-          // If we got actual conversation data, analyze it with turn-by-turn classification
-          const result = await analyzeWithTurnClassification(raw);
-          return NextResponse.json({
-            ok: true,
-            mode: "link_playwright",
-            addedByName: me.name || me.email,
-            title: result.title,
-            pairs: result.pairs,
-            segments: result.segments,
-          });
-        } catch (playwrightError) {
-          console.error("Playwright parsing failed:", playwrightError);
+          if (raw.messages.length > 0) {
+            const result = await analyzeWithTurnClassification(raw);
+            return NextResponse.json({
+              ok: true,
+              mode: "link_simple",
+              addedByName: me.name || me.email,
+              title: result.title,
+              pairs: result.pairs,
+              segments: result.segments,
+            });
+          }
+        } catch (simpleError) {
+          console.error("Simple fetch parsing failed:", simpleError);
           
           // Try Puppeteer as fallback
           try {
@@ -294,13 +295,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
               { 
                 ok: false, 
                 needsManual: true, 
-                error: `All parsing methods failed. Playwright: ${(playwrightError as any)?.message || 'Unknown error'}, Puppeteer: ${(puppeteerError as any)?.message || 'Unknown error'}`,
+                error: `All parsing methods failed. Simple Fetch: ${(simpleError as any)?.message || 'Unknown error'}, Puppeteer: ${(puppeteerError as any)?.message || 'Unknown error'}`,
                 suggestions: [
                   "The ChatGPT page may be using bot detection or require JavaScript",
                   "Try copying the conversation text manually",
                   "Ensure the share link is publicly accessible",
                   "Check if the link has expired or been made private",
-                  "Consider using Playwright for better parsing reliability"
+                  "Consider using manual input for better reliability"
                 ]
               },
               { status: 422 }

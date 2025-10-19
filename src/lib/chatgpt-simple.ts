@@ -1,5 +1,5 @@
 // src/lib/chatgpt-simple.ts
-import { SharePayload } from './chatgpt-ingest';
+import { SharePayload, ChatRole, ChatMsg } from './chatgpt-ingest';
 
 /** Simple ChatGPT parsing using direct fetch with better headers */
 export async function fetchChatGPTShareSimple(url: string): Promise<SharePayload> {
@@ -33,7 +33,9 @@ export async function fetchChatGPTShareSimple(url: string): Promise<SharePayload
       'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     ];
 
-    for (const userAgent of userAgents) {
+      let lastError: Error | null = null;
+
+      for (const userAgent of userAgents) {
       try {
         console.log(`Trying with user agent: ${userAgent.substring(0, 50)}...`);
         
@@ -63,7 +65,7 @@ export async function fetchChatGPTShareSimple(url: string): Promise<SharePayload
         console.log(`Received HTML: ${html.length} characters`);
 
         // Look for conversation data in the HTML
-        const messages = [];
+        const messages: ChatMsg[] = [];
         let title = "Shared Chat";
 
         // Try to extract title
@@ -73,7 +75,7 @@ export async function fetchChatGPTShareSimple(url: string): Promise<SharePayload
         }
 
         // Look for __NEXT_DATA__ script tag
-        const nextDataMatch = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>(.*?)<\/script>/s);
+        const nextDataMatch = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>(.*?)<\/script>/);
         if (nextDataMatch) {
           try {
             const data = JSON.parse(nextDataMatch[1]);
@@ -89,7 +91,7 @@ export async function fetchChatGPTShareSimple(url: string): Promise<SharePayload
                   const content = msg.content || msg.text || msg.message || '';
                   if (content && typeof content === 'string' && content.trim()) {
                     messages.push({
-                      role: role === 'user' ? 'user' : 'assistant',
+                      role: (role === 'user' ? 'user' : 'assistant') as ChatRole,
                       content: content.trim()
                     });
                   }
@@ -101,29 +103,17 @@ export async function fetchChatGPTShareSimple(url: string): Promise<SharePayload
           }
         }
 
-        // If we found messages, return them
+        // If we found messages from __NEXT_DATA__, return them
         if (messages.length > 0) {
-          console.log(`Found ${messages.length} messages via simple fetch`);
+          console.log(`Found ${messages.length} messages via __NEXT_DATA__ in simple fetch`);
           return {
             title,
             messages: messages.slice(0, 60) // Cap to keep payload reasonable
           };
         }
 
-        // Try to extract from meta tags or other sources
-        const metaDescription = html.match(/<meta[^>]*name="description"[^>]*content="([^"]+)"/i);
-        if (metaDescription && metaDescription[1].length > 50) {
-          // This might be a conversation summary
-          messages.push({
-            role: 'assistant',
-            content: metaDescription[1]
-          });
-          
-          console.log(`Found content via meta description: ${metaDescription[1].substring(0, 100)}...`);
-        }
-
-        // Try to extract from other script tags that might contain conversation data
-        const scriptTags = html.match(/<script[^>]*>(.*?)<\/script>/gs);
+        // Strategy 2: Try to extract from other script tags that might contain conversation data
+        const scriptTags = html.match(/<script[^>]*>(.*?)<\/script>/g);
         if (scriptTags) {
           for (const scriptTag of scriptTags) {
             const scriptContent = scriptTag.replace(/<\/?script[^>]*>/g, '');
@@ -155,12 +145,38 @@ export async function fetchChatGPTShareSimple(url: string): Promise<SharePayload
           }
         }
 
+        // If we found messages from script tags, return them
+        if (messages.length > 0) {
+          console.log(`Found ${messages.length} messages via script tags in simple fetch`);
+          return {
+            title,
+            messages: messages.slice(0, 60) // Cap to keep payload reasonable
+          };
+        }
+
+        // Strategy 3: Try to extract from meta tags or other sources
+        const metaDescription = html.match(/<meta[^>]*name="description"[^>]*content="([^"]+)"/i);
+        if (metaDescription && metaDescription[1].length > 50) {
+          // This might be a conversation summary
+          messages.push({
+            role: 'assistant' as ChatRole,
+            content: metaDescription[1]
+          });
+          
+          console.log(`Found content via meta description: ${metaDescription[1].substring(0, 100)}...`);
+        }
+
+
         // Try to extract from page content using regex patterns
         const conversationPatterns = [
-          /<div[^>]*class="[^"]*message[^"]*"[^>]*>(.*?)<\/div>/gs,
-          /<div[^>]*class="[^"]*conversation[^"]*"[^>]*>(.*?)<\/div>/gs,
-          /<div[^>]*class="[^"]*chat[^"]*"[^>]*>(.*?)<\/div>/gs,
-          /<p[^>]*class="[^"]*message[^"]*"[^>]*>(.*?)<\/p>/gs
+          /<div[^>]*class="[^"]*message[^"]*"[^>]*>(.*?)<\/div>/g,
+          /<div[^>]*class="[^"]*conversation[^"]*"[^>]*>(.*?)<\/div>/g,
+          /<div[^>]*class="[^"]*chat[^"]*"[^>]*>(.*?)<\/div>/g,
+          /<p[^>]*class="[^"]*message[^"]*"[^>]*>(.*?)<\/p>/g,
+          /<div[^>]*data-message-author-role[^>]*>(.*?)<\/div>/g,
+          /<div[^>]*data-testid[^>]*message[^>]*>(.*?)<\/div>/g,
+          /<div[^>]*data-testid[^>]*conversation[^>]*>(.*?)<\/div>/g,
+          /<div[^>]*role="[^"]*listitem[^"]*"[^>]*>(.*?)<\/div>/g
         ];
 
         for (const pattern of conversationPatterns) {
@@ -169,12 +185,16 @@ export async function fetchChatGPTShareSimple(url: string): Promise<SharePayload
             for (const match of matches) {
               const text = match.replace(/<[^>]*>/g, '').trim();
               if (text && text.length > 10 && text.length < 2000) {
-                // Simple role detection based on content
-                let role = 'assistant';
-                if (/^(hi|hello|hey|what|how|why|when|where|who|can you|please|help|안녕|질문|문의|도움)/i.test(text)) {
-                  role = 'user';
+                // Filter out navigation and UI elements
+                if (!/Continue this conversation|Log in|Sign up|Share|Copy link|Download|Regenerate|Skip to content|ChatGPT|Attach|Search|Study|Voice|By messaging ChatGPT|Terms|Privacy Policy|Loading|Error|Try again|window\.__oai|requestAnimationFrame|function\(\)|Date\.now\(\)|__oai_logHTML|__oai_SSR_HTML|__oai_logTTI|__oai_SSR_TTI/i.test(text)) {
+                  
+                  // Simple role detection based on content
+                  let role: "user" | "assistant" = 'assistant';
+                  if (/^(hi|hello|hey|what|how|why|when|where|who|can you|please|help|안녕|질문|문의|도움)/i.test(text)) {
+                    role = 'user';
+                  }
+                  messages.push({ role: role as ChatRole, content: text });
                 }
-                messages.push({ role, content: text });
               }
             }
           }
@@ -189,15 +209,16 @@ export async function fetchChatGPTShareSimple(url: string): Promise<SharePayload
           };
         }
 
-      } catch (fetchError) {
+      } catch (fetchError: any) {
         console.log(`Fetch failed with user agent ${userAgent.substring(0, 20)}:`, fetchError.message);
+        lastError = fetchError;
         continue;
       }
     }
 
     throw new Error("Could not extract conversation content with any user agent");
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Simple fetch parsing failed:", error);
     throw new Error(`Simple fetch parsing failed: ${error.message}`);
   }
