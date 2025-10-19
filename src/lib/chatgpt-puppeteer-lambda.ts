@@ -38,6 +38,9 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
       // Use Chromium for Vercel deployment with proper library path
       console.log('Initializing Chromium for Vercel...');
       
+      // Force chromium to extract libraries to /tmp/chromium
+      await chromium.default.executablePath('/tmp/chromium');
+      
       // Initialize chromium and get executable path
       const executablePath = await chromium.default.executablePath();
       console.log('Chromium executable path:', executablePath);
@@ -60,15 +63,22 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
       
       console.log('Chromium args:', chromiumArgs);
       
+      // Set up environment variables for library loading
+      const env = {
+        ...process.env,
+        LD_LIBRARY_PATH: '/tmp/chromium/lib:/tmp/chromium/swiftshader',
+        CHROME_BIN: executablePath,
+        CHROME_PATH: executablePath,
+      };
+      
+      console.log('Environment variables:', { LD_LIBRARY_PATH: env.LD_LIBRARY_PATH });
+      
       browser = await puppeteer.default.launch({
         args: chromiumArgs,
         executablePath,
         headless: chromium.default.headless,
         ignoreHTTPSErrors: true,
-        env: {
-          ...process.env,
-          LD_LIBRARY_PATH: '/tmp/chromium/lib',
-        },
+        env,
       });
       
       console.log('Browser launched successfully');
