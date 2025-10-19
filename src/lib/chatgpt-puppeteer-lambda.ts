@@ -23,21 +23,58 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
     throw new Error("Invalid ChatGPT share URL");
   }
 
-  console.log("Using Puppeteer with chrome-aws-lambda for ChatGPT parsing...");
+  console.log("Using Puppeteer with @sparticuz/chromium for ChatGPT parsing...");
 
   try {
-    // Import Puppeteer and chrome-aws-lambda dynamically
+    // Import Puppeteer and chromium dynamically
     const puppeteer = await import('puppeteer-core');
-    const chromium = await import('chrome-aws-lambda');
+    const chromium = await import('@sparticuz/chromium');
 
-    // Launch browser with chrome-aws-lambda
-    const browser = await puppeteer.default.launch({
-      args: chromium.default.args,
-      defaultViewport: chromium.default.defaultViewport,
-      executablePath: await chromium.default.executablePath,
-      headless: chromium.default.headless,
-      ignoreHTTPSErrors: true,
-    });
+    // Configure for Vercel deployment
+    const isVercel = process.env.VERCEL === '1';
+    
+    let browser;
+    if (isVercel) {
+      // Use Chromium for Vercel deployment
+      browser = await puppeteer.default.launch({
+        args: [
+          ...chromium.default.args,
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process',
+          '--disable-gpu',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+          '--disable-features=TranslateUI',
+          '--disable-ipc-flooding-protection',
+          '--memory-pressure-off',
+          '--max_old_space_size=512'
+        ],
+        defaultViewport: chromium.default.defaultViewport,
+        executablePath: await chromium.default.executablePath(),
+        headless: chromium.default.headless,
+        ignoreHTTPSErrors: true,
+      });
+    } else {
+      // Use local Chrome for development
+      const puppeteerLocal = await import('puppeteer');
+      browser = await puppeteerLocal.default.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-blink-features=AutomationControlled',
+          '--disable-features=VizDisplayCompositor'
+        ],
+        ignoreHTTPSErrors: true,
+      });
+    }
 
     const page = await browser.newPage();
     
