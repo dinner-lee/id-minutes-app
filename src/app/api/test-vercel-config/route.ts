@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     // Test Chromium availability
     let chromiumTest = { available: false, error: null };
     try {
-      const chromium = await import('@sparticuz/chromium');
+      const chromium = await import('@sparticuz/chromium-min');
       const executablePath = await chromium.executablePath();
       chromiumTest = { 
         available: !!executablePath, 
