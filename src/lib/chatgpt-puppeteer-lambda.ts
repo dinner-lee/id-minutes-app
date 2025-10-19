@@ -23,25 +23,25 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
     throw new Error("Invalid ChatGPT share URL");
   }
 
-  console.log("Using Puppeteer with @sparticuz/chromium for ChatGPT parsing...");
+  console.log("Using Puppeteer with @sparticuz/chromium-min for ChatGPT parsing...");
 
   try {
-    // Import Puppeteer and chromium dynamically
+    // Import Puppeteer and chromium-min dynamically
     const puppeteer = await import('puppeteer-core');
-    const chromium = await import('@sparticuz/chromium');
+    const chromium = await import('@sparticuz/chromium-min');
 
     // Configure for Vercel deployment
     const isVercel = process.env.VERCEL === '1';
     
     let browser;
     if (isVercel) {
-      // Use Chromium for Vercel deployment with recommended usage
+      // Use Chromium-min for Vercel deployment (lighter weight)
       browser = await puppeteer.default.launch({
         args: puppeteer.default.defaultArgs({ 
           args: chromium.default.args, 
           headless: 'shell' 
         }),
-        executablePath: await chromium.default.executablePath(),
+        executablePath: await chromium.default.executablePath('/opt/chromium'),
         headless: 'shell',
         ignoreHTTPSErrors: true,
       });

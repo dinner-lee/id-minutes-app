@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
     if (debugInfo.dependencies.puppeteer && debugInfo.dependencies.chromium) {
       try {
         const puppeteer = await import('puppeteer');
-        const chromium = await import('@sparticuz/chromium');
+        const chromium = await import('@sparticuz/chromium-min');
         
         const browser = await puppeteer.launch({
           args: chromium.args,

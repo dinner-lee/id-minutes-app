@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     if (chromiumTest.available && puppeteerTest.available) {
       try {
         const puppeteer = await import('puppeteer-core');
-        const chromium = await import('@sparticuz/chromium');
+        const chromium = await import('@sparticuz/chromium-min');
         
         const launchStart = Date.now();
         const browser = await puppeteer.default.launch({
