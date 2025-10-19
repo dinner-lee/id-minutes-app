@@ -5,14 +5,13 @@ import { SharePayload, ChatRole } from './chatgpt-ingest';
 async function debugDump(dir: string) {
   const fs = await import('node:fs/promises');
   try {
-    const root = await fs.readdir(dir);
-    console.log('[debug]', dir, '=', root);
-    if (root.includes('lib')) {
-      const lib = await fs.readdir(`${dir}/lib`);
-      console.log('[debug]', `${dir}/lib count =`, lib.length);
-    }
+    // Only check the lib directory, not the executable file
+    const libDir = `${dir}/lib`;
+    const lib = await fs.readdir(libDir);
+    console.log('[debug]', `${libDir} count =`, lib.length);
+    console.log('[debug]', `${libDir} files =`, lib.slice(0, 10)); // Show first 10 files
   } catch (e) {
-    console.log('[debug] not extracted yet:', e);
+    console.log('[debug] lib directory not extracted yet:', e.message);
   }
 }
 
@@ -70,10 +69,12 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
       });
       
       // ⬇️ This is the "auto-extraction trigger" (no arguments!)
+      console.log('[chromium] Starting auto-extraction...');
       const execPath = await chromium.default.executablePath();
       console.log('[chromium] execPath =', execPath);
+      console.log('[chromium] Auto-extraction completed');
       
-      // Now debug should work since /tmp/chromium exists
+      // Now debug should work since /tmp/chromium/lib should exist
       await debugDump('/tmp/chromium');
       
       // Launch with canonical settings
