@@ -181,20 +181,31 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
 
     console.log(`Navigating to: ${url}`);
     
-    // Retry navigation logic with fresh page for each attempt
+    // Retry navigation logic with fresh browser for each attempt
     let navigationSuccess = false;
     let lastError: Error | null = null;
+    let workingBrowser = browser;
     let workingPage = page;
     
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         console.log(`Navigation attempt ${attempt}/3...`);
         
-        // Create fresh page for each attempt to avoid detached frame issues
+        // Create fresh browser and page for each attempt to avoid detached frame issues
         if (attempt > 1) {
-          console.log("Creating fresh page for retry...");
-          await workingPage.close();
-          workingPage = await browser.newPage();
+          console.log("Creating fresh browser for retry...");
+          await workingBrowser.close();
+          
+          // Create new browser instance
+          workingBrowser = await puppeteer.default.launch({
+            args: chromium.default.args,
+            executablePath: execPath,
+            headless: chromium.default.headless,
+            defaultViewport: chromium.default.defaultViewport,
+            ignoreHTTPSErrors: true,
+          });
+          
+          workingPage = await workingBrowser.newPage();
           
           // Reconfigure the fresh page
           workingPage.setDefaultNavigationTimeout(45000);
@@ -206,6 +217,20 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
           });
         }
+        
+        // Configure Service Worker bypass and frame stability for all attempts
+        const client = await workingPage.target().createCDPSession();
+        await client.send('Network.setBypassServiceWorker', { bypass: true });
+        
+        // Block Service Worker registration to prevent frame replacement
+        await workingPage.evaluateOnNewDocument(() => {
+          // Override service worker registration
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register = () => Promise.resolve();
+            navigator.serviceWorker.getRegistration = () => Promise.resolve(null);
+            navigator.serviceWorker.getRegistrations = () => Promise.resolve([]);
+          }
+        });
         
         // Navigate to the ChatGPT share URL with more lenient wait condition
         await workingPage.goto(url, { 
@@ -391,9 +416,8 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
 
     console.log(`Final processed messages: ${deduped.length}`);
 
-    // Close the working page but keep browser alive for potential retries
-    await pageToUse.close();
-    await browser.close();
+    // Close the working browser (which includes the page)
+    await workingBrowser.close();
 
     return {
       title: conversationData.title,
