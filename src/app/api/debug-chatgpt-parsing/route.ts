@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
 
     // Test Chromium availability
     try {
-      const chromium = await import('@sparticuz/chromium-min');
+      const chromium = await import('@sparticuz/chromium');
       const executablePath = await chromium.executablePath();
       debugInfo.environment.chromiumAvailable = !!executablePath;
       debugInfo.dependencies.chromium = true;
@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
     if (debugInfo.dependencies.puppeteer && debugInfo.dependencies.chromium) {
       try {
         const puppeteer = await import('puppeteer');
-        const chromium = await import('@sparticuz/chromium-min');
+        const chromium = await import('@sparticuz/chromium');
         
         const browser = await puppeteer.launch({
           args: chromium.args,
