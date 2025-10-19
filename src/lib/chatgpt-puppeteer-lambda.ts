@@ -38,12 +38,26 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
       // Use Chromium for Vercel deployment with proper library path
       console.log('Initializing Chromium for Vercel...');
       
-      // Force chromium to extract libraries to /tmp/chromium
-      await chromium.default.executablePath('/tmp/chromium');
-      
-      // Initialize chromium and get executable path
+      // Let chromium automatically extract to its default location
       const executablePath = await chromium.default.executablePath();
       console.log('Chromium executable path:', executablePath);
+      
+      // Check if the chromium directory exists
+      const fs = await import('fs');
+      const chromiumDir = executablePath.replace('/chromium', '');
+      console.log('Chromium directory:', chromiumDir);
+      
+      try {
+        const dirExists = fs.existsSync(chromiumDir);
+        console.log('Chromium directory exists:', dirExists);
+        
+        if (dirExists) {
+          const files = fs.readdirSync(chromiumDir);
+          console.log('Files in chromium directory:', files);
+        }
+      } catch (e) {
+        console.log('Error checking chromium directory:', e);
+      }
       
       // Set up library path for chromium dependencies
       const chromiumArgs = [
@@ -64,14 +78,20 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
       console.log('Chromium args:', chromiumArgs);
       
       // Set up environment variables for library loading
+      const chromiumLibPath = `${chromiumDir}/lib`;
+      const chromiumSwiftshaderPath = `${chromiumDir}/swiftshader`;
+      
       const env = {
         ...process.env,
-        LD_LIBRARY_PATH: '/tmp/chromium/lib:/tmp/chromium/swiftshader',
+        LD_LIBRARY_PATH: `${chromiumLibPath}:${chromiumSwiftshaderPath}`,
         CHROME_BIN: executablePath,
         CHROME_PATH: executablePath,
       };
       
-      console.log('Environment variables:', { LD_LIBRARY_PATH: env.LD_LIBRARY_PATH });
+      console.log('Environment variables:', { 
+        LD_LIBRARY_PATH: env.LD_LIBRARY_PATH,
+        CHROME_BIN: env.CHROME_BIN 
+      });
       
       browser = await puppeteer.default.launch({
         args: chromiumArgs,
