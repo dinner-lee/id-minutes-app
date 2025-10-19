@@ -181,16 +181,34 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
 
     console.log(`Navigating to: ${url}`);
     
-    // Retry navigation logic to handle frame detachment
+    // Retry navigation logic with fresh page for each attempt
     let navigationSuccess = false;
     let lastError: Error | null = null;
+    let workingPage = page;
     
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         console.log(`Navigation attempt ${attempt}/3...`);
         
+        // Create fresh page for each attempt to avoid detached frame issues
+        if (attempt > 1) {
+          console.log("Creating fresh page for retry...");
+          await workingPage.close();
+          workingPage = await browser.newPage();
+          
+          // Reconfigure the fresh page
+          workingPage.setDefaultNavigationTimeout(45000);
+          workingPage.setDefaultTimeout(30000);
+          
+          await workingPage.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+          await workingPage.setExtraHTTPHeaders({
+            'Accept-Language': 'en-US,en;q=0.9,ko-KR;q=0.8',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          });
+        }
+        
         // Navigate to the ChatGPT share URL with more lenient wait condition
-        await page.goto(url, { 
+        await workingPage.goto(url, { 
           waitUntil: 'domcontentloaded', // Standard Puppeteer option
           timeout: 45000 
         });
@@ -205,11 +223,11 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
         try {
           // Try multiple selectors for conversation content
           await Promise.race([
-            page.waitForSelector('[data-message-author-role]', { timeout: 10000 }),
-            page.waitForSelector('.conversation-turn', { timeout: 10000 }),
-            page.waitForSelector('[class*="message"]', { timeout: 10000 }),
-            page.waitForSelector('[class*="conversation"]', { timeout: 10000 }),
-            page.waitForSelector('main', { timeout: 10000 })
+            workingPage.waitForSelector('[data-message-author-role]', { timeout: 10000 }),
+            workingPage.waitForSelector('.conversation-turn', { timeout: 10000 }),
+            workingPage.waitForSelector('[class*="message"]', { timeout: 10000 }),
+            workingPage.waitForSelector('[class*="conversation"]', { timeout: 10000 }),
+            workingPage.waitForSelector('main', { timeout: 10000 })
           ]);
           console.log("Conversation content found");
         } catch (e) {
@@ -236,11 +254,14 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
     if (!navigationSuccess) {
       throw new Error(`Navigation failed after 3 attempts. Last error: ${lastError?.message}`);
     }
+    
+    // Use the working page for data extraction
+    const pageToUse = workingPage;
 
     console.log("Extracting conversation data...");
     
-    // Extract conversation data using page.evaluate
-    const conversationData = await page.evaluate(() => {
+    // Extract conversation data using pageToUse.evaluate
+    const conversationData = await pageToUse.evaluate(() => {
       const messages: Array<{role: "user" | "assistant", content: string}> = [];
       let title = "Shared Chat";
 
@@ -370,6 +391,8 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
 
     console.log(`Final processed messages: ${deduped.length}`);
 
+    // Close the working page but keep browser alive for potential retries
+    await pageToUse.close();
     await browser.close();
 
     return {
