@@ -35,13 +35,43 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
     
     let browser;
     if (isVercel) {
-      // Use Chromium for Vercel deployment
+      // Use Chromium for Vercel deployment with proper library path
+      console.log('Initializing Chromium for Vercel...');
+      
+      // Initialize chromium and get executable path
+      const executablePath = await chromium.default.executablePath();
+      console.log('Chromium executable path:', executablePath);
+      
+      // Set up library path for chromium dependencies
+      const chromiumArgs = [
+        ...chromium.default.args,
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor',
+        '--single-process',
+        '--no-zygote',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding'
+      ];
+      
+      console.log('Chromium args:', chromiumArgs);
+      
       browser = await puppeteer.default.launch({
-        args: chromium.default.args,
-        executablePath: await chromium.default.executablePath(),
+        args: chromiumArgs,
+        executablePath,
         headless: chromium.default.headless,
         ignoreHTTPSErrors: true,
+        env: {
+          ...process.env,
+          LD_LIBRARY_PATH: '/tmp/chromium/lib',
+        },
       });
+      
+      console.log('Browser launched successfully');
     } else {
       // Use local Chrome for development
       const puppeteerLocal = await import('puppeteer');

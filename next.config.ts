@@ -13,7 +13,11 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     outputFileTracingIncludes: {
-      '/api/**/*': ['./node_modules/@sparticuz/chromium/bin/**/*'],
+      '/api/**/*': [
+        './node_modules/@sparticuz/chromium/bin/**/*',
+        './node_modules/@sparticuz/chromium/lib/**/*',
+        './node_modules/@sparticuz/chromium/swiftshader/**/*',
+      ],
     },
   },
 };
