@@ -24,20 +24,25 @@ async function manualChromiumExtraction() {
     // Extract al2023.tar.br to /tmp
     await tar.extract({
       file: bundlePath,
-      cwd: '/tmp',
-      sync: false
+      cwd: '/tmp'
     });
     
     console.log('[manual-extraction] al2023.tar.br extraction completed');
     
     // Check if critical libraries were extracted
     const tmpFiles = await fs.readdir('/tmp');
+    console.log('[manual-extraction] /tmp files after extraction:', tmpFiles.slice(0, 10));
+    
     const criticalLibs = ['libnss3.so', 'libssl3.so', 'libcrypto.so'];
     const foundLibs = criticalLibs.filter(lib => 
       tmpFiles.some(file => file.includes(lib))
     );
     
     console.log('[manual-extraction] Critical libraries found:', foundLibs);
+    
+    // Specifically check for libnss3.so
+    const libnss3Exists = await fs.access('/tmp/libnss3.so').then(() => true).catch(() => false);
+    console.log('[manual-extraction] /tmp/libnss3.so exists:', libnss3Exists);
     
     // Extract swiftshader.tar.br if it exists
     const swiftshaderPath = './node_modules/@sparticuz/chromium/bin/swiftshader.tar.br';
@@ -47,8 +52,7 @@ async function manualChromiumExtraction() {
       console.log('[manual-extraction] Extracting swiftshader.tar.br...');
       await tar.extract({
         file: swiftshaderPath,
-        cwd: '/tmp',
-        sync: false
+        cwd: '/tmp'
       });
       console.log('[manual-extraction] swiftshader.tar.br extraction completed');
     }
