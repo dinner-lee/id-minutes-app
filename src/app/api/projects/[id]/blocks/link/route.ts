@@ -1,6 +1,5 @@
 export const runtime = "nodejs";
-
-import { NextRequest, NextResponse } from "next/server";
+export const maxDuration = 60;
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { ogScrape } from "@/lib/og";

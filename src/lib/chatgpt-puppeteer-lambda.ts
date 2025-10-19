@@ -35,29 +35,14 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
     
     let browser;
     if (isVercel) {
-      // Use Chromium for Vercel deployment
+      // Use Chromium for Vercel deployment with recommended usage
       browser = await puppeteer.default.launch({
-        args: [
-          ...chromium.default.args,
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process',
-          '--disable-gpu',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-features=TranslateUI',
-          '--disable-ipc-flooding-protection',
-          '--memory-pressure-off',
-          '--max_old_space_size=512'
-        ],
-        defaultViewport: chromium.default.defaultViewport,
+        args: puppeteer.default.defaultArgs({ 
+          args: chromium.default.args, 
+          headless: 'shell' 
+        }),
         executablePath: await chromium.default.executablePath(),
-        headless: chromium.default.headless,
+        headless: 'shell',
         ignoreHTTPSErrors: true,
       });
     } else {
