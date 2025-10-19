@@ -118,14 +118,16 @@ Return only the category name, nothing else.`;
 
   console.log("After turn classification:", flows.length, "flows created");
   
-  // Create properly structured pairs for the UI
-  const structuredPairs = turnClassifications.map(turn => ({
-    userIndex: turn.userIndex,
-    userText: turn.userText,
-    assistantTexts: turn.assistantTexts,
-    category: turn.category,
-    turnNumber: turn.turnNumber
-  }));
+  // Create properly structured pairs for the UI - sort by userIndex to maintain original order
+  const structuredPairs = turnClassifications
+    .sort((a, b) => a.userIndex - b.userIndex) // Sort by original message order
+    .map(turn => ({
+      userIndex: turn.userIndex,
+      userText: turn.userText,
+      assistantTexts: turn.assistantTexts,
+      category: turn.category,
+      turnNumber: turn.turnNumber
+    }));
 
   // Create properly structured segments for the UI
   const structuredSegments = flows.map((flow, index) => ({
@@ -140,6 +142,12 @@ Return only the category name, nothing else.`;
 
   console.log("Structured pairs:", structuredPairs.length);
   console.log("Structured segments:", structuredSegments.length);
+  
+  // Debug: Log pair details
+  console.log("Pair details:");
+  structuredPairs.forEach((pair, index) => {
+    console.log(`Pair ${index}: userIndex=${pair.userIndex}, userText="${pair.userText.substring(0, 50)}...", assistantTexts=${pair.assistantTexts.length}`);
+  });
   
   return { 
     pairs: structuredPairs, 

@@ -580,8 +580,8 @@ export function messagesToPairs(messages: ChatMsg[]): Pair[] {
     const msg = messages[i];
     
     if (msg.role === "user") {
-      // Save previous pair if exists
-      if (currentPair && currentPair.userText) {
+      // Save previous pair if exists and has assistant responses
+      if (currentPair && currentPair.userText && currentPair.assistantTexts && currentPair.assistantTexts.length > 0) {
         pairs.push(currentPair as Pair);
       }
       
@@ -599,10 +599,10 @@ export function messagesToPairs(messages: ChatMsg[]): Pair[] {
     }
   }
 
-    // Don't forget the last pair
-    if (currentPair && currentPair.userText && currentPair.assistantTexts) {
-      pairs.push(currentPair as Pair);
-    }
+  // Don't forget the last pair - only if it has assistant responses
+  if (currentPair && currentPair.userText && currentPair.assistantTexts && currentPair.assistantTexts.length > 0) {
+    pairs.push(currentPair as Pair);
+  }
 
   return pairs;
 }
