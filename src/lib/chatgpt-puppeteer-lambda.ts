@@ -167,36 +167,75 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
 
     const page = await browser.newPage();
     
+    // Set navigation timeout
+    page.setDefaultNavigationTimeout(45000);
+    page.setDefaultTimeout(30000);
+    
     // Set user agent and headers to avoid bot detection
     await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     
     await page.setExtraHTTPHeaders({
-      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Language': 'en-US,en;q=0.9,ko-KR;q=0.8',
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
     });
 
     console.log(`Navigating to: ${url}`);
     
-    // Navigate to the ChatGPT share URL
-    await page.goto(url, { 
-      waitUntil: 'domcontentloaded',
-      timeout: 30000 
-    });
-
-    // Wait for conversation content to load
-    console.log("Waiting for conversation content to load...");
+    // Retry navigation logic to handle frame detachment
+    let navigationSuccess = false;
+    let lastError: Error | null = null;
     
-    try {
-      // Wait for conversation elements to appear
-      await page.waitForSelector('[data-message-author-role], .conversation-turn, [class*="message"]', { 
-        timeout: 15000 
-      });
-    } catch (e) {
-      console.log("Conversation elements not found, proceeding with page content...");
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        console.log(`Navigation attempt ${attempt}/3...`);
+        
+        // Navigate to the ChatGPT share URL with more lenient wait condition
+        await page.goto(url, { 
+          waitUntil: 'commit', // More lenient than domcontentloaded
+          timeout: 45000 
+        });
+        
+        // Wait for page to stabilize after SPA transition
+        console.log("Waiting for page to stabilize...");
+        await page.waitForTimeout(2000);
+        
+        // Wait for conversation content to load with multiple selectors
+        console.log("Waiting for conversation content to load...");
+        
+        try {
+          // Try multiple selectors for conversation content
+          await Promise.race([
+            page.waitForSelector('[data-message-author-role]', { timeout: 10000 }),
+            page.waitForSelector('.conversation-turn', { timeout: 10000 }),
+            page.waitForSelector('[class*="message"]', { timeout: 10000 }),
+            page.waitForSelector('[class*="conversation"]', { timeout: 10000 }),
+            page.waitForSelector('main', { timeout: 10000 })
+          ]);
+          console.log("Conversation content found");
+        } catch (e) {
+          console.log("Conversation elements not found, checking page content...");
+        }
+        
+        // Additional wait for dynamic content
+        await page.waitForTimeout(3000);
+        
+        navigationSuccess = true;
+        break;
+        
+      } catch (error) {
+        lastError = error as Error;
+        console.log(`Navigation attempt ${attempt} failed:`, error.message);
+        
+        if (attempt < 3) {
+          console.log("Retrying navigation...");
+          await page.waitForTimeout(1000);
+        }
+      }
     }
-
-    // Wait for dynamic content to load
-    await page.waitForTimeout(3000);
+    
+    if (!navigationSuccess) {
+      throw new Error(`Navigation failed after 3 attempts. Last error: ${lastError?.message}`);
+    }
 
     console.log("Extracting conversation data...");
     
