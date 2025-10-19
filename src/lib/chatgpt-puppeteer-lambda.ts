@@ -77,10 +77,36 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
       
       console.log('Chromium args:', chromiumArgs);
       
-      // Set up environment variables for library loading
-      const chromiumLibPath = `${chromiumDir}/lib`;
+      // Check if chromium lib directory exists and has the required libraries
+      const chromiumLibPath = `${chromiumDir}/chromium/lib`;
       const chromiumSwiftshaderPath = `${chromiumDir}/swiftshader`;
       
+      try {
+        const libExists = fs.existsSync(chromiumLibPath);
+        console.log('Chromium lib directory exists:', libExists);
+        
+        if (libExists) {
+          const libFiles = fs.readdirSync(chromiumLibPath);
+          console.log('Files in chromium lib directory:', libFiles);
+          
+          // Check for critical libraries
+          const criticalLibs = ['libnss3.so', 'libssl3.so', 'libcrypto.so'];
+          const missingLibs = criticalLibs.filter(lib => !libFiles.some(file => file.includes(lib)));
+          
+          if (missingLibs.length > 0) {
+            console.log('Missing critical libraries:', missingLibs);
+            console.log('This indicates the chromium bundle extraction failed');
+          } else {
+            console.log('All critical libraries found');
+          }
+        } else {
+          console.log('Chromium lib directory does not exist - bundle extraction failed');
+        }
+      } catch (e) {
+        console.log('Error checking chromium lib directory:', e);
+      }
+      
+      // Set up environment variables for library loading
       const env = {
         ...process.env,
         LD_LIBRARY_PATH: `${chromiumLibPath}:${chromiumSwiftshaderPath}`,

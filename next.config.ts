@@ -14,12 +14,14 @@ const nextConfig: NextConfig = {
   experimental: {
     outputFileTracingIncludes: {
       '/api/**/*': [
+        './node_modules/@sparticuz/chromium/**/*',
         './node_modules/@sparticuz/chromium/bin/**/*',
         './node_modules/@sparticuz/chromium/bin/al2023.tar.br',
         './node_modules/@sparticuz/chromium/bin/al2.tar.br',
         './node_modules/@sparticuz/chromium/bin/chromium.br',
         './node_modules/@sparticuz/chromium/bin/fonts.tar.br',
         './node_modules/@sparticuz/chromium/bin/swiftshader.tar.br',
+        './node_modules/@sparticuz/chromium/build/**/*',
       ],
     },
   },
