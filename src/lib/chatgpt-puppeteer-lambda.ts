@@ -2,16 +2,37 @@
 import { SharePayload, ChatRole } from './chatgpt-ingest';
 
 // Debug function to check chromium extraction
-async function debugDump(dir: string) {
+async function debugDump() {
   const fs = await import('node:fs/promises');
+  
+  // Check /tmp directory for extracted libraries
   try {
-    // Only check the lib directory, not the executable file
-    const libDir = `${dir}/lib`;
-    const lib = await fs.readdir(libDir);
-    console.log('[debug]', `${libDir} count =`, lib.length);
-    console.log('[debug]', `${libDir} files =`, lib.slice(0, 10)); // Show first 10 files
+    const tmpFiles = await fs.readdir('/tmp');
+    const chromiumFiles = tmpFiles.filter(file => 
+      file.includes('chromium') || 
+      file.includes('lib') || 
+      file.includes('swiftshader') ||
+      file.endsWith('.so')
+    );
+    console.log('[debug] /tmp chromium-related files:', chromiumFiles);
+    
+    // Check for critical libraries
+    const criticalLibs = ['libnss3.so', 'libssl3.so', 'libcrypto.so'];
+    const foundLibs = criticalLibs.filter(lib => 
+      tmpFiles.some(file => file.includes(lib))
+    );
+    console.log('[debug] Critical libraries found:', foundLibs);
+    
+    // Check swiftshader directory
+    try {
+      const swiftshaderFiles = await fs.readdir('/tmp/swiftshader');
+      console.log('[debug] /tmp/swiftshader files count:', swiftshaderFiles.length);
+    } catch (e) {
+      console.log('[debug] /tmp/swiftshader not found:', e.message);
+    }
+    
   } catch (e) {
-    console.log('[debug] lib directory not extracted yet:', e.message);
+    console.log('[debug] Error checking /tmp:', e.message);
   }
 }
 
@@ -54,8 +75,8 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
       
       // Environment variable correction
       process.env.LD_LIBRARY_PATH = [
-        '/tmp/chromium/lib',
-        '/tmp/chromium/swiftshader',
+        '/tmp',
+        '/tmp/swiftshader',
         process.env.LD_LIBRARY_PATH,
       ].filter(Boolean).join(':');
       
@@ -75,7 +96,7 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
       console.log('[chromium] Auto-extraction completed');
       
       // Now debug should work since /tmp/chromium/lib should exist
-      await debugDump('/tmp/chromium');
+      await debugDump();
       
       // Launch with canonical settings
       browser = await puppeteer.default.launch({
