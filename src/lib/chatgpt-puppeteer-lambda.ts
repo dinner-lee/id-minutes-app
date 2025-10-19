@@ -181,7 +181,7 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
 
     console.log(`Navigating to: ${url}`);
     
-    // Retry navigation logic with fresh browser for each attempt
+    // Advanced navigation strategy: JS-OFF first, then JS-ON with CDP
     let navigationSuccess = false;
     let lastError: Error | null = null;
     let workingBrowser = browser;
@@ -191,7 +191,7 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
       try {
         console.log(`Navigation attempt ${attempt}/3...`);
         
-        // Create fresh browser and page for each attempt to avoid detached frame issues
+        // Create fresh browser for each attempt to avoid detached frame issues
         if (attempt > 1) {
           console.log("Creating fresh browser for retry...");
           await workingBrowser.close();
@@ -221,49 +221,116 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
           });
         }
         
-        // Configure Service Worker bypass and frame stability for all attempts
+        // Strategy 1: JS-OFF attempt (bypasses Service Worker and CSR)
+        if (attempt === 1) {
+          console.log("Attempting JS-OFF navigation to bypass Service Worker...");
+          
+          // Disable JavaScript completely
+          await workingPage.setJavaScriptEnabled(false);
+          
+          try {
+            await workingPage.goto(url, { 
+              waitUntil: 'domcontentloaded',
+              timeout: 30000 
+            });
+            
+            // Check if we got static content
+            const staticContent = await workingPage.evaluate(() => {
+              const body = document.body?.textContent || '';
+              return body.includes('ChatGPT') || body.includes('conversation') || body.includes('message');
+            });
+            
+            if (staticContent) {
+              console.log("JS-OFF navigation successful, static content found");
+              navigationSuccess = true;
+              break;
+            } else {
+              console.log("JS-OFF navigation completed but no static content found");
+            }
+          } catch (jsOffError) {
+            console.log("JS-OFF navigation failed:", jsOffError.message);
+          }
+        }
+        
+        // Strategy 2: JS-ON with CDP direct navigation
+        console.log("Attempting JS-ON with CDP direct navigation...");
+        
+        // Re-enable JavaScript
+        await workingPage.setJavaScriptEnabled(true);
+        
+        // Create CDP session for direct control
         const client = await workingPage.target().createCDPSession();
+        
+        // Configure Service Worker bypass
         await client.send('Network.setBypassServiceWorker', { bypass: true });
         
-        // Block Service Worker registration to prevent frame replacement
+        // Configure target auto-attach for OOPIF handling
+        await client.send('Target.setAutoAttach', { 
+          autoAttach: true, 
+          flatten: true,
+          waitForDebuggerOnStart: false 
+        });
+        
+        // Block Service Worker registration completely
         await workingPage.evaluateOnNewDocument(() => {
           // Override service worker registration
           if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register = () => Promise.resolve();
             navigator.serviceWorker.getRegistration = () => Promise.resolve(null);
             navigator.serviceWorker.getRegistrations = () => Promise.resolve([]);
+            // Block service worker completely
+            Object.defineProperty(navigator, 'serviceWorker', {
+              value: undefined,
+              writable: false
+            });
           }
         });
         
-        // Navigate to the ChatGPT share URL with more lenient wait condition
-        await workingPage.goto(url, { 
-          waitUntil: 'domcontentloaded', // Standard Puppeteer option
-          timeout: 45000 
+        // Use CDP direct navigation to bypass Puppeteer's LifecycleWatcher
+        console.log("Using CDP direct navigation...");
+        
+        const navigationPromise = new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('CDP navigation timeout'));
+          }, 45000);
+          
+          // Listen for DOM content loaded event
+          client.on('Page.domContentEventFired', () => {
+            clearTimeout(timeout);
+            resolve();
+          });
+          
+          // Start navigation
+          client.send('Page.navigate', { url }).catch(reject);
         });
         
-        // Wait for page to stabilize after SPA transition
-        console.log("Waiting for page to stabilize...");
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await navigationPromise;
+        console.log("CDP navigation completed");
         
-        // Wait for conversation content to load with multiple selectors
+        // Wait for page to stabilize after potential SPA transitions
+        console.log("Waiting for page to stabilize...");
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Wait for conversation content with multiple strategies
         console.log("Waiting for conversation content to load...");
         
         try {
           // Try multiple selectors for conversation content
           await Promise.race([
-            workingPage.waitForSelector('[data-message-author-role]', { timeout: 10000 }),
-            workingPage.waitForSelector('.conversation-turn', { timeout: 10000 }),
-            workingPage.waitForSelector('[class*="message"]', { timeout: 10000 }),
-            workingPage.waitForSelector('[class*="conversation"]', { timeout: 10000 }),
-            workingPage.waitForSelector('main', { timeout: 10000 })
+            workingPage.waitForSelector('[data-message-author-role]', { timeout: 15000 }),
+            workingPage.waitForSelector('.conversation-turn', { timeout: 15000 }),
+            workingPage.waitForSelector('[class*="message"]', { timeout: 15000 }),
+            workingPage.waitForSelector('[class*="conversation"]', { timeout: 15000 }),
+            workingPage.waitForSelector('main', { timeout: 15000 }),
+            workingPage.waitForSelector('[role="main"]', { timeout: 15000 })
           ]);
           console.log("Conversation content found");
         } catch (e) {
           console.log("Conversation elements not found, checking page content...");
         }
         
-        // Additional wait for dynamic content
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        // Additional stabilization wait
+        await new Promise(resolve => setTimeout(resolve, 2000));
         
         navigationSuccess = true;
         break;
@@ -274,7 +341,7 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
         
         if (attempt < 3) {
           console.log("Retrying navigation...");
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 2000));
         }
       }
     }
