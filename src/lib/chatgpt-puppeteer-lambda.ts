@@ -196,10 +196,13 @@ export async function fetchChatGPTSharePuppeteerLambda(url: string): Promise<Sha
           console.log("Creating fresh browser for retry...");
           await workingBrowser.close();
           
+          // Get fresh executable path for new browser
+          const freshExecPath = await chromium.default.executablePath();
+          
           // Create new browser instance
           workingBrowser = await puppeteer.default.launch({
             args: chromium.default.args,
-            executablePath: execPath,
+            executablePath: freshExecPath,
             headless: chromium.default.headless,
             defaultViewport: chromium.default.defaultViewport,
             ignoreHTTPSErrors: true,
