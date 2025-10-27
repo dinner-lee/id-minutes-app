@@ -45,7 +45,9 @@ export default function Step3Client({
       setSaving(true);
       await postJSON(`/api/projects/${projectId}/stages`, {
         stages: items.map(({ name, order, plannedDate }) => ({
-          name, order, plannedDate: plannedDate || null,
+          name, 
+          order, 
+          plannedDate: plannedDate ? new Date(plannedDate).toISOString() : null,
         })),
       });
       router.replace(`/projects/${projectId}`);

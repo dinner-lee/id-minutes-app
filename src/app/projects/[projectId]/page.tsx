@@ -4,10 +4,13 @@ import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import { ArrowLeft } from "lucide-react";
 import Editor from "./components/Editor";
 import { StickyHeader } from "./components/StickyHeader";
 import CreateMinuteButton from "./components/CreateMinuteButton";
 import RightDetailPanel from "./components/RightDetailPanel";
+import { FloatingAddButton } from "./components/FloatingAddButton";
+import { MinutesList } from "./components/MinutesList";
 
 type PageProps = {
   params: { projectId: string };
@@ -21,7 +24,14 @@ async function getProjectAndMinutes(projectId: string) {
       stages: { orderBy: { order: "asc" } },
       minutes: {
         orderBy: { updatedAt: "desc" },
-        include: { author: true },
+        select: {
+          id: true,
+          title: true,
+          updatedAt: true,
+          createdAt: true,
+          stageId: true,
+          markdown: true,
+        },
       },
     },
   });
@@ -29,11 +39,11 @@ async function getProjectAndMinutes(projectId: string) {
 }
 
 function pickSelectedMinute(
-  minutes: Awaited<ReturnType<typeof prisma.minute.findMany>>,
+  minutes: Array<{ id: string; title: string; updatedAt: Date; createdAt: Date; stageId: string | null; markdown?: string | null }>,
   requestedId?: string
 ) {
   if (requestedId) {
-    const found = minutes.find((m: any) => m.id === requestedId);
+    const found = minutes.find((m) => m.id === requestedId);
     if (found) return found;
   }
   return minutes[0] ?? null;
@@ -48,25 +58,36 @@ export default async function ProjectWorkspacePage({ params, searchParams }: Pag
   const selectedMinute = pickSelectedMinute(project.minutes, resolvedSearchParams.minuteId);
 
   return (
-    <div className="flex h-[100dvh]">
+    <div className="flex h-[100dvh] overflow-hidden">
       {/* Sidebar */}
-      <aside className="w-72 shrink-0 border-r bg-white/70 backdrop-blur">
-        <div className="p-4 border-b">
+      <aside className="w-72 shrink-0 border-r bg-white/70 backdrop-blur flex flex-col">
+        <div className="p-4 border-b shrink-0">
+          {/* Back button */}
+          <Link 
+            href="/"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to projects
+          </Link>
+          
           <h2 className="font-semibold text-lg truncate">{project.title}</h2>
           <p className="text-xs text-muted-foreground line-clamp-2">{project.purpose}</p>
         </div>
-        <div className="p-4">
+        <div className="p-4 shrink-0">
           <CreateMinuteButton projectId={projectId} />
         </div>
-        <MinutesList
-          projectId={projectId}
-          minutes={project.minutes}
-          activeId={selectedMinute?.id}
-        />
+        <div className="flex-1 overflow-y-auto">
+          <MinutesList
+            projectId={projectId}
+            minutes={project.minutes}
+            activeId={selectedMinute?.id}
+          />
+        </div>
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 min-w-0">
+      <main className="flex-1 min-w-0 overflow-y-auto">
         {selectedMinute ? (
           <MinuteView
             key={selectedMinute.id} // remount per minute to isolate editor state
@@ -75,6 +96,8 @@ export default async function ProjectWorkspacePage({ params, searchParams }: Pag
             stageName={
               project.stages.find((s: any) => s.id === selectedMinute.stageId)?.name ?? undefined
             }
+            currentStageId={selectedMinute.stageId}
+            stages={project.stages}
             createdAt={selectedMinute.createdAt}
             updatedAt={selectedMinute.updatedAt}
             initialHTML={selectedMinute.markdown ?? ""} // per-minute saved HTML
@@ -85,56 +108,14 @@ export default async function ProjectWorkspacePage({ params, searchParams }: Pag
       </main>
 
       {/* Right detail panel */}
-      <aside className="block w-[360px] border-l bg-white/60 backdrop-blur z-10">
+      <aside className="block w-[476px] shrink-0 border-l bg-white/60 backdrop-blur z-10 overflow-y-auto">
         <RightDetailPanel />
       </aside>
     </div>
   );
 }
 
-/* ------------------------- Sidebar list ------------------------- */
-
-function MinutesList({
-  projectId,
-  minutes,
-  activeId,
-}: {
-  projectId: string;
-  minutes: { id: string; title: string; updatedAt: Date }[];
-  activeId?: string | null;
-}) {
-  if (!minutes.length) {
-    return (
-      <div className="px-4 text-sm text-muted-foreground">
-        No minutes yet. Create one to get started.
-      </div>
-    );
-  }
-
-  return (
-    <ul className="px-2 space-y-1 overflow-y-auto h:[calc(100dvh-160px)] md:h-[calc(100dvh-160px)]">
-      {minutes.map((m) => {
-        const href = `/projects/${projectId}?minuteId=${m.id}`;
-        const active = m.id === activeId;
-        return (
-          <li key={m.id}>
-            <Link
-              href={href}
-              className={`block rounded-md px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground ${
-                active ? "bg-accent text-accent-foreground" : ""
-              }`}
-            >
-              <div className="truncate">{m.title || "Untitled minute"}</div>
-              <div className="text-[10px] text-muted-foreground">
-                Updated {new Date(m.updatedAt).toLocaleString()}
-              </div>
-            </Link>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
+/* ------------------------- Empty state ------------------------- */
 
 function EmptyState({ projectId }: { projectId: string }) {
   return (
@@ -156,6 +137,8 @@ function MinuteView({
   minuteId,
   title,
   stageName,
+  currentStageId,
+  stages,
   createdAt,
   updatedAt,
   initialHTML,
@@ -163,6 +146,8 @@ function MinuteView({
   minuteId: string;
   title: string;
   stageName?: string;
+  currentStageId?: string | null;
+  stages?: Array<{ id: string; name: string; order: number; plannedDate?: Date | null }>;
   createdAt: Date;
   updatedAt: Date;
   initialHTML?: string;
@@ -170,22 +155,27 @@ function MinuteView({
   const user = { name: "You" }; // replace with real session user later
 
   return (
-    <div key={minuteId} className="h-full flex flex-col">
+    <div key={minuteId} className="min-h-full flex flex-col relative">
       <StickyHeader
         key={`hdr-${minuteId}`}
         minuteId={minuteId}
         initialTitle={title || "Untitled minute"}
         stageName={stageName}
+        currentStageId={currentStageId}
+        stages={stages}
         createdAt={createdAt}
         updatedAt={updatedAt}
       />
 
       {/* Notion-like editor body (inline + inside Editor inserts cards) */}
-      <div className="mx-auto w-full max-w-4xl px-4 py-6">
+      <div className="mx-auto w-full max-w-[986px] px-2 py-6">
         <Suspense fallback={<div className="text-sm text-muted-foreground">Loading editor…</div>}>
           <Editor key={`ed-${minuteId}`} minuteId={minuteId} initialHTML={initialHTML || ""} user={user} />
         </Suspense>
       </div>
+
+      {/* Floating Add Button */}
+      <FloatingAddButton minuteId={minuteId} />
     </div>
   );
 }

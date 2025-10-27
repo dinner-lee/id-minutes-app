@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ExternalLink, MessageSquare, X } from "lucide-react";
+import { ExternalLink, MessageSquare, X, ChevronDown, ChevronUp } from "lucide-react";
 
 export default function RightDetailPanel() {
   const { selected, clear } = usePanelStore();
@@ -236,88 +236,220 @@ function ChatGPTDetails({
   pairs?: any[];
   onViewConversation?: (flow: any, flowIndex: number, pairs: any[]) => void;
 }) {
+  const [expandedFlows, setExpandedFlows] = useState<Set<number>>(new Set());
+
+  // Helper to render markdown bold in text and normalize line breaks
+  const renderMarkdown = (text: string): React.ReactNode => {
+    if (!text) return null;
+    
+    // First normalize line breaks
+    const normalized = text.replace(/\n{3,}/g, '\n\n');
+    
+    // Split by line breaks to preserve them
+    const lines = normalized.split('\n');
+    const result: React.ReactNode[] = [];
+    
+    lines.forEach((line, lineIdx) => {
+      // Process markdown bold in this line
+      const parts: React.ReactNode[] = [];
+      const boldRegex = /\*\*(.+?)\*\*/g;
+      let lastIndex = 0;
+      let match;
+      
+      while ((match = boldRegex.exec(line)) !== null) {
+        // Add text before the match
+        if (match.index > lastIndex) {
+          parts.push(line.substring(lastIndex, match.index));
+        }
+        
+        // Add bold text
+        parts.push(
+          <strong key={`${lineIdx}-${match.index}`} className="font-semibold">
+            {match[1]}
+          </strong>
+        );
+        
+        lastIndex = match.index + match[0].length;
+      }
+      
+      // Add remaining text
+      if (lastIndex < line.length) {
+        parts.push(line.substring(lastIndex));
+      }
+      
+      // Add the processed line
+      result.push(
+        <span key={lineIdx}>
+          {parts.length > 0 ? parts : line}
+        </span>
+      );
+      
+      // Add line break except for last line
+      if (lineIdx < lines.length - 1) {
+        result.push('\n');
+      }
+    });
+    
+    return result.length > 0 ? result : normalized;
+  };
+  
+  // Calculate total turns across all flows
+  const totalTurns = Array.isArray(flows) 
+    ? flows.reduce((sum, flow) => sum + ((flow?.endPair || 0) - (flow?.startPair || 0) + 1), 0)
+    : 0;
+
+  // Get one most frequent category
+  const categoryFrequency: Record<string, number> = {};
+  if (Array.isArray(flows)) {
+    flows.forEach((flow) => {
+      if (flow?.category) {
+        categoryFrequency[flow.category] = (categoryFrequency[flow.category] || 0) + 1;
+      }
+    });
+  }
+  const sortedCategories = Object.entries(categoryFrequency)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 1)
+    .map(([category]) => category);
+
+  const toggleFlow = (index: number) => {
+    setExpandedFlows(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(index)) {
+        newSet.delete(index);
+      } else {
+        newSet.add(index);
+      }
+      return newSet;
+    });
+  };
+
+  // Helper to shorten category names for display
+  const shortenCategory = (category: string): string => {
+    if (category.length <= 15) return category;
+    // Try to truncate smartly
+    const words = category.split(' ');
+    if (words.length > 1) {
+      return words.slice(0, 2).join(' ') + '...';
+    }
+    return category.slice(0, 15) + '...';
+  };
+
   return (
     <div className="space-y-3">
+      {/* Summary stats */}
+      {Array.isArray(flows) && flows.length > 0 && (
+        <div className="bg-gray-50 border rounded-lg p-3 mb-4">
+          <div className="flex gap-3">
+            <div className="w-[30%]">
+              <div className="text-xs text-gray-500 mb-1">Total Turns</div>
+              <div className="text-lg font-semibold text-gray-900">{totalTurns}</div>
+            </div>
+            <div className="w-[70%]">
+              <div className="text-xs text-gray-500 mb-1">Top Category</div>
+              <div className="flex flex-col gap-1">
+                {sortedCategories.length > 0 ? (
+                  <span className="text-sm font-medium text-gray-700 truncate">
+                    {sortedCategories[0]}
+                  </span>
+                ) : (
+                  <span className="text-sm text-gray-500">—</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {Array.isArray(flows) && flows.length > 0 ? (
-        <div className="space-y-4">
-          <h4 className="text-sm font-medium">Conversation flows</h4>
-          <ul className="text-sm space-y-4">
-            {flows.map((f: any, idx: number) => {
-              const conversationTurns = (f?.endPair || 0) - (f?.startPair || 0) + 1;
-              const previewText = f?.assistantPreview || "";
-              const shouldTruncate = previewText.length > 500;
-              const displayText = shouldTruncate ? previewText.slice(0, 500) + "..." : previewText;
-              
-              return (
-                <li key={idx} className="border rounded-lg p-4 bg-gray-50/50">
-                  {/* Flow number and category */}
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="h-7 w-7 rounded-full bg-blue-100 flex items-center justify-center text-sm font-medium text-blue-700">
-                      {idx + 1}
-                    </div>
-                    <span className="font-medium text-gray-900">{f?.category ?? "Flow"}</span>
-                  </div>
+        <div className="space-y-2">
+          {flows.map((f: any, idx: number) => {
+            const conversationTurns = (f?.endPair || 0) - (f?.startPair || 0) + 1;
+            const isExpanded = expandedFlows.has(idx);
+            
+            // Get conversation pairs for this flow
+            const flowPairs = f?.turnPairs || [];
+            
+            return (
+              <div key={idx} className="border rounded-lg bg-white">
+                {/* Header: Badges + Title + Chevron */}
+                <button
+                  onClick={() => toggleFlow(idx)}
+                  className="w-full text-left p-3 flex items-center gap-2 hover:bg-gray-50 transition-colors"
+                >
+                  {/* Flow number badge */}
+                  <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-blue-100 text-blue-700 text-xs font-medium shrink-0">
+                    {idx + 1}
+                  </span>
                   
-                  {/* User attribution */}
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="h-5 w-5 rounded-full bg-slate-200 flex items-center justify-center text-xs font-medium">
-                      {f?.addedBy ? f.addedBy.charAt(0).toUpperCase() : "?"}
-                    </div>
-                    <span className="text-sm text-gray-600">
-                      {f?.addedBy || "Unknown user"}
-                    </span>
-                  </div>
+                  {/* Category badge */}
+                  <span className="text-xs rounded-full border px-2 py-0.5 bg-white text-gray-700 shrink-0">
+                    {shortenCategory(f?.category ?? "Flow")}
+                  </span>
                   
-                  {/* Conversation turns count */}
-                  <div className="mb-3">
-                    <span className="text-sm font-medium text-gray-700">Conversation turns: </span>
-                    <span className="inline-flex items-center justify-center h-6 w-6 rounded-full border-2 border-blue-300 bg-blue-50 text-xs font-medium text-blue-700">
-                      {conversationTurns}
-                    </span>
-                  </div>
+                  {/* Title */}
+                  <span className="text-sm font-medium text-gray-900 flex-1 truncate">
+                    {f?.title || "Untitled flow"}
+                  </span>
                   
-                  {/* Preview section */}
-                  {previewText && (
-                    <div className="space-y-2">
-                      <h5 className="text-sm font-medium text-gray-700">Preview</h5>
-                      <div className="bg-white border rounded-lg p-3 text-sm text-gray-800 whitespace-pre-wrap leading-relaxed relative">
-                        {displayText}
-                        <div className="absolute bottom-2 right-2">
-                          <button 
-                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md transition-colors duration-200"
-                            onClick={() => {
-                              onViewConversation?.(f, idx, pairs || []);
-                            }}
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                            View original
-                          </button>
-                        </div>
-                      </div>
-                    </div>
+                  {/* Chevron */}
+                  {isExpanded ? (
+                    <ChevronUp className="h-4 w-4 text-gray-400 shrink-0" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />
                   )}
-                  
-                  {/* Additional metadata */}
-                  <div className="mt-3 pt-3 border-t border-gray-200">
-                    <div className="text-xs text-gray-500 space-y-1">
-                      <div>
-                        Pairs {f?.startPair + 1}–{f?.endPair + 1}
-                        {f?.userIndices?.length ? ` • User turns: [${f.userIndices.join(", ")}]` : ""}
-                      </div>
-                      {f?.addedAt && (
-                        <div>
-                          Added {new Date(f.addedAt).toLocaleDateString()}
+                </button>
+                
+                {/* Metadata underneath */}
+                <div className="px-3 pb-2 flex items-center gap-3 text-xs text-gray-500">
+                  <span>{conversationTurns} turns</span>
+                  {f?.addedBy && (
+                    <>
+                      <span>•</span>
+                      <span>{f.addedBy}</span>
+                    </>
+                  )}
+                </div>
+                
+                {/* Expanded content: Original conversation pairs */}
+                {isExpanded && flowPairs.length > 0 && (
+                  <div className="border-t p-3 space-y-4 bg-gray-50">
+                    {flowPairs.map((pair: any, turnIdx: number) => (
+                      <div key={turnIdx} className="space-y-2">
+                        {/* User message */}
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className="h-5 w-5 rounded-full bg-blue-200 flex items-center justify-center text-xs font-medium text-blue-800">
+                              U
+                            </div>
+                            <span className="text-xs font-medium text-blue-800">User</span>
+                          </div>
+                          <div className="text-sm text-blue-900 whitespace-pre-wrap">
+                            {pair.userText || "User request"}
+                          </div>
                         </div>
-                      )}
-                    </div>
+                        
+                        {/* Assistant responses */}
+                        {pair.assistantTexts?.map((response: string, respIdx: number) => (
+                          <div key={respIdx} className="bg-white border border-gray-200 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="h-5 w-5 rounded-full bg-gray-200 flex items-center justify-center text-xs font-medium text-gray-800">
+                                A
+                              </div>
+                              <span className="text-xs font-medium text-gray-800">Assistant</span>
+                            </div>
+                            <div className="text-sm text-gray-900 whitespace-pre-wrap">
+                              {renderMarkdown(response)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
                   </div>
-                </li>
-              );
-            })}
-          </ul>
+                )}
+              </div>
+            );
+          })}
         </div>
       ) : (
         <p className="text-sm text-muted-foreground">No flows parsed yet.</p>

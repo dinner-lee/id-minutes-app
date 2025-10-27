@@ -45,6 +45,7 @@ export default function EmbedModal({
   onAdded?: () => void;
   onCreated?: (block: any) => void;
 }) {
+  const [activeTab, setActiveTab] = useState<"link" | "manual">("link");
   const [url, setUrl] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
@@ -58,8 +59,7 @@ export default function EmbedModal({
     pairs: Array<{ userText: string; assistantTexts: string[] }>;
   }>(null);
 
-  // Manual transcript fallback (when share page can’t be scraped)
-  const [showManual, setShowManual] = useState(false);
+  // Manual transcript (for content copy-paste mode)
   const [manualText, setManualText] = useState("");
 
   useEffect(() => {
@@ -68,9 +68,9 @@ export default function EmbedModal({
       setFile(null);
       setNote("");
       setCgptPreview(null);
-      setShowManual(false);
       setManualText("");
       setLoading(false);
+      setActiveTab("link");
     }
   }, [open]);
 
@@ -125,14 +125,14 @@ export default function EmbedModal({
           });
         } else if (data?.needsManual || res.status === 422) {
           // Graceful: switch to manual paste UI
-          setShowManual(true);
+          setActiveTab("manual");
         } else {
           throw new Error(data?.error || text || "Preview failed");
         }
       } catch (e: any) {
         console.error(e);
         // As a fallback, allow manual
-        setShowManual(true);
+        setActiveTab("manual");
       } finally {
         setLoading(false);
       }
@@ -181,13 +181,13 @@ export default function EmbedModal({
         return alert(data?.error || text || "Manual analysis failed");
       }
 
-      setCgptPreview({
-        title: data.title || "ChatGPT Conversation",
-        segments: data.segments || [],
-        addedByName: data.addedByName || "You",
-        pairs: data.pairs || [],
-      });
-      setShowManual(false);
+        setCgptPreview({
+          title: data.title || "ChatGPT Conversation",
+          segments: data.segments || [],
+          addedByName: data.addedByName || "You",
+          pairs: data.pairs || [],
+        });
+        setActiveTab("link");
     } catch (e: any) {
       setLoading(false);
       console.error(e);
@@ -203,6 +203,32 @@ export default function EmbedModal({
         <DialogHeader>
           <DialogTitle>Attach to minutes</DialogTitle>
         </DialogHeader>
+
+        {/* Tab buttons */}
+        <div className="flex gap-2 mb-3">
+          <button
+            type="button"
+            onClick={() => setActiveTab("link")}
+            className={`flex-1 px-4 py-2 rounded-lg border transition-colors ${
+              activeTab === "link"
+                ? "bg-black text-white border-black"
+                : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+            }`}
+          >
+            Paste Link
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("manual")}
+            className={`flex-1 px-4 py-2 rounded-lg border transition-colors ${
+              activeTab === "manual"
+                ? "bg-black text-white border-black"
+                : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+            }`}
+          >
+            Copy-Paste Content
+          </button>
+        </div>
 
         {/* 1) ChatGPT flow review (after preview) */}
         {cgptPreview ? (
@@ -232,24 +258,22 @@ export default function EmbedModal({
               onOpenChange(false);
             }}
           />
-        ) : /* 2) Manual transcript fallback UI */ showManual ? (
+        ) : activeTab === "manual" ? (
+          /* 2) Manual transcript paste UI */
           <>
-            <p className="text-sm text-muted-foreground mb-2">
-              Couldn’t read the ChatGPT share page. Paste the transcript below
+            <p className="text-sm text-muted-foreground mb-3">
+              Couldn't read the ChatGPT share page. Paste the transcript below
               (예: <span className="font-medium">나의 말:</span>,{" "}
               <span className="font-medium">ChatGPT의 말:</span> 라벨 포함), then click{" "}
               <span className="font-medium">Analyze transcript</span>.
             </p>
             <textarea
-              className="w-full border rounded p-2 text-sm min-h-[220px]"
+              className="w-full border rounded p-2 text-sm min-h-[220px] mb-3"
               placeholder={"나의 말: ...\nChatGPT의 말: ...\n\n나의 말: ...\nChatGPT의 말: ..."}
               value={manualText}
               onChange={(e) => setManualText(e.target.value)}
             />
-            <div className="flex items-center justify-end gap-2 mt-2">
-              <Button variant="secondary" onClick={() => setShowManual(false)}>
-                Back
-              </Button>
+            <div className="flex items-center justify-end gap-2">
               <Button onClick={handleManualAnalyze} disabled={loading}>
                 {loading ? "Analyzing…" : "Analyze transcript"}
               </Button>
@@ -258,44 +282,25 @@ export default function EmbedModal({
         ) : (
           /* 3) Default link/file UI */
           <>
-            <p className="text-sm text-muted-foreground">
-              Paste a link (ChatGPT share or any website), or upload a file.
+            <p className="text-sm text-muted-foreground mb-3">
+              Add ChatGPT conversation link, web link, or file
             </p>
 
-            {/* Link row */}
-            <div className="flex gap-2">
+            {/* Link input */}
+            <div className="flex items-center gap-2 mb-3">
+              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+              </svg>
               <Input
-                placeholder="https://… (ChatGPT share link or website)"
+                placeholder="ChatGPT share link or website URL"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-              />
-              <Button onClick={handlePrimary} disabled={loading}>
-                {loading ? "Loading…" : "Add"}
-              </Button>
-            </div>
-
-            <div className="text-xs text-muted-foreground mt-1">
-              Trouble with a ChatGPT link?{" "}
-              <button
-                type="button"
-                className="underline"
-                onClick={() => setShowManual(true)}
-              >
-                Paste transcript instead
-              </button>
-            </div>
-
-            {/* Optional note for website/file */}
-            <div className="mt-2">
-              <Input
-                placeholder="Optional note (why this is relevant)"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
+                className="flex-1"
               />
             </div>
 
             {/* Divider */}
-            <div className="relative my-4">
+            <div className="relative my-3">
               <Separator />
               <span className="absolute left-1/2 -translate-x-1/2 -top-3 bg-background px-2 text-xs text-muted-foreground">
                 or
@@ -303,14 +308,38 @@ export default function EmbedModal({
             </div>
 
             {/* File upload */}
-            <div className="border-dashed border rounded-lg p-6 text-center">
-              <input
-                type="file"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
+            <label htmlFor="file-upload" className="block cursor-pointer mb-3">
+              <div className="border-dashed border-2 border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+                <svg className="w-6 h-6 mx-auto mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                <p className="text-sm text-gray-600 mb-1">Drag or click to upload file</p>
+                <p className="text-xs text-gray-500">PDF, TXT, Image, etc.</p>
+              </div>
+            </label>
+            <input
+              type="file"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              className="hidden"
+              id="file-upload"
+            />
+
+            {/* Optional note for website/file */}
+            <div className="mb-3">
+              <Input
+                placeholder="Add a description for team members"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground mt-2">
-                Drag & drop a file, or click to select.
-              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2">
+              <Button variant="secondary" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handlePrimary} disabled={loading}>
+                {loading ? "Adding…" : "Add"}
+              </Button>
             </div>
           </>
         )}

@@ -35,6 +35,10 @@ type BlockLike = {
   // Attribution data
   createdBy?: { name?: string | null; email?: string | null } | null;
   createdAt?: string | null;
+  // ChatGPT-specific data
+  flowCategories?: string[] | null;
+  flowCount?: number | null;
+  turnCount?: number | null;
 };
 
 export default function Editor({
@@ -140,7 +144,7 @@ export default function Editor({
   }, [editor, minuteId, saving]);
 
   // Insert a newly created block inline at the current selection
-  function insertBlockIntoEditor(block: BlockLike) {
+  const insertBlockIntoEditor = (block: BlockLike) => {
     if (!editor) return;
     // Make sure there is a paragraph to insert into if doc is empty
     if (editor.isEmpty) {
@@ -160,12 +164,29 @@ export default function Editor({
         // Attribution data
         createdBy: block.createdBy || undefined,
         createdAt: block.createdAt || undefined,
+        // ChatGPT-specific data
+        flowCategories: block.flowCategories || undefined,
+        flowCount: block.flowCount || undefined,
+        turnCount: block.turnCount || undefined,
       })
       .run();
-  }
+  };
+
+  // Listen for insert block events from FloatingAddButton
+  useEffect(() => {
+    function handleInsertBlock(event: CustomEvent) {
+      const block = event.detail.block as BlockLike;
+      insertBlockIntoEditor(block);
+    }
+
+    window.addEventListener("insertBlock", handleInsertBlock as EventListener);
+    return () => {
+      window.removeEventListener("insertBlock", handleInsertBlock as EventListener);
+    };
+  }, [editor, insertBlockIntoEditor]);
 
   return (
-    <div className="relative mx-auto w-full max-w-[794px]">
+    <div className="relative mx-auto w-full max-w-[873px]">
       <div className="bg-white shadow-sm rounded-lg border relative">
         {/* Toolbar */}
         {editor && <Toolbar editor={editor} />}
@@ -185,27 +206,9 @@ export default function Editor({
         <div className="px-6 pb-2 text-[11px] text-muted-foreground">
           {saving === "saving" ? "Saving…" : "Saved"}
         </div>
-
-        {/* Floating + button */}
-        <Button
-          type="button"
-          onClick={() => setOpenEmbed(true)}
-          className="rounded-full h-11 w-11 p-0 shadow-lg absolute right-4 bottom-4 z-30"
-          aria-label="Insert attachment"
-        >
-          <Plus />
-        </Button>
       </div>
 
-      {/* Embed Modal */}
-      <EmbedModal
-        open={openEmbed}
-        onOpenChange={setOpenEmbed}
-        minuteId={minuteId}
-        onCreated={(block: BlockLike) => {
-          insertBlockIntoEditor(block);
-        }}
-      />
+      {/* Embed Modal will be managed by parent */}
     </div>
   );
 }

@@ -54,6 +54,7 @@ export type ChangeSegment = {
   userIndices: number[]; // absolute user indices
   assistantPreview: string; // last assistant response within this segment
   availableResponses?: string[]; // all available assistant responses for this segment
+  title?: string; // User-friendly title summarizing the flow (15-20 chars)
 };
 
 /** Component for selecting assistant responses */
@@ -146,6 +147,55 @@ export default function ChatGPTFlowReview({
   const [rows, setRows] = useState<ChangeSegment[]>(initialSegments || []);
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [generatingTitles, setGeneratingTitles] = useState(false);
+
+  // Generate titles for flows that don't have titles
+  useEffect(() => {
+    async function generateTitles() {
+      const needsTitles = rows.filter(row => !row.title || row.title.trim() === "");
+      if (needsTitles.length === 0 || !pairs || pairs.length === 0) return;
+
+      setGeneratingTitles(true);
+      try {
+        // Prepare flows data with userText for title generation
+        const flowsToGenerate = needsTitles.map(row => ({
+          userText: pairs[row.startPair]?.userText || "",
+          turnPairs: pairs.slice(row.startPair, row.endPair + 1),
+        }));
+
+        const response = await fetch("/api/generate-flow-titles", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ flows: flowsToGenerate }),
+        });
+
+        if (response.ok) {
+          const { titles } = await response.json();
+          
+          // Update rows with generated titles
+          setRows(prev => {
+            let needsTitleIdx = 0;
+            return prev.map((row) => {
+              const needsTitle = !row.title || row.title.trim() === "";
+              if (needsTitle && needsTitleIdx < titles.length && titles[needsTitleIdx]) {
+                const result = { ...row, title: titles[needsTitleIdx] };
+                needsTitleIdx++;
+                return result;
+              }
+              if (needsTitle) needsTitleIdx++;
+              return row;
+            });
+          });
+        }
+      } catch (err) {
+        console.error("Failed to generate titles:", err);
+      } finally {
+        setGeneratingTitles(false);
+      }
+    }
+
+    generateTitles();
+  }, [pairs]); // Generate titles when pairs are loaded
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -189,6 +239,7 @@ export default function ChatGPTFlowReview({
           endPair: prev.length,
           userIndices: [],
           assistantPreview: "",
+          title: "",
         },
       ]);
     }
@@ -205,6 +256,7 @@ export default function ChatGPTFlowReview({
         userIndices: [],
         assistantPreview: lastResponse,
         availableResponses: pair.assistantTexts.length > 0 ? [...pair.assistantTexts] : undefined,
+        title: "",
       },
     ]);
     setShowDropdown(false); // Close dropdown after selection
@@ -226,12 +278,19 @@ export default function ChatGPTFlowReview({
         }
       }
       
-      return {
-        ...segment,
+      const enhanced = {
+        category: segment.category,
+        startPair: segment.startPair,
+        endPair: segment.endPair,
+        userIndices: segment.userIndices,
+        assistantPreview: segment.assistantPreview,
+        title: segment.title || "", // Explicitly include title
         turnPairs: turnPairs, // Store all turns for this flow
         userText: pairs[segment.startPair]?.userText || "",
         assistantTexts: pairs[segment.startPair]?.assistantTexts || [segment.assistantPreview || ""],
       };
+      
+    return enhanced;
     });
 
     await onConfirm({
@@ -261,15 +320,27 @@ export default function ChatGPTFlowReview({
 
       {/* Rows */}
       <div className="space-y-3 max-h-[50vh] overflow-auto pr-1">
+        {generatingTitles && (
+          <div className="text-sm text-muted-foreground text-center py-2">
+            Generating titles...
+          </div>
+        )}
         {rows.map((row, i) => (
           <div key={i} className="border rounded-lg p-3 bg-white">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs w-5 shrink-0 text-muted-foreground">{i + 1}.</span>
 
               <SelectBox
                 value={row.category}
                 onValueChange={(v) => updateRow(i, { category: v as NineCategory })}
                 options={NINE_CATEGORIES.map((c) => ({ value: c, label: c }))}
+              />
+
+              <Input
+                value={row.title || ""}
+                onChange={(e) => updateRow(i, { title: e.target.value })}
+                placeholder="Flow title (auto-generated)"
+                className="h-8 w-[250px] text-sm"
               />
 
               <button

@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { ProjectCard } from "@/app/components/ProjectCard";
 
 /** Dev-only helper. Replace with real session lookup (NextAuth) later. */
 async function getOrCreateDevUser() {
@@ -54,47 +55,7 @@ export default async function HomePage() {
             <h2 className="text-lg font-medium mb-3">Your projects</h2>
             <ul className="grid gap-4 md:grid-cols-2">
               {projects.map((p) => (
-                <li key={p.id} className="rounded-xl border bg-white p-4 hover:shadow-sm transition">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <h3 className="font-semibold truncate">{p.title}</h3>
-                      <p className="text-sm text-muted-foreground line-clamp-2">{p.purpose}</p>
-                    </div>
-                    <span className="shrink-0 text-[11px] text-muted-foreground">
-                      Updated {new Date(p.updatedAt).toLocaleDateString()}
-                    </span>
-                  </div>
-
-                  <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
-                    <span>
-                      {p._count.minutes} minute{p._count.minutes === 1 ? "" : "s"}
-                    </span>
-                    <span>
-                      {p._count.memberships + 1} member
-                      {p._count.memberships + 1 === 1 ? "" : "s"}
-                    </span>
-                    <span>
-                      {new Date(p.startDate).toLocaleDateString()} →{" "}
-                      {new Date(p.endDate).toLocaleDateString()}
-                    </span>
-                  </div>
-
-                  <div className="mt-4 flex items-center gap-2">
-                    <Link
-                      href={`/projects/${p.id}`}
-                      className="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
-                    >
-                      Open workspace
-                    </Link>
-                    <Link
-                      href={`/projects/new/step3?projectId=${p.id}`}
-                      className="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
-                      title="Adjust model timeline"
-                    >
-                      Edit timeline
-                    </Link>
-                  </div>
-                </li>
+                <ProjectCard key={p.id} project={p} />
               ))}
             </ul>
           </>

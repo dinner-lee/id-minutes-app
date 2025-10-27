@@ -23,6 +23,7 @@ const Body = z.object({
         endPair: z.number().int(),
         userIndices: z.array(z.number().int()),
         assistantPreview: z.string().optional().default(""),
+        title: z.string().optional(), // Flow title
         // Additional fields for storing actual conversation data
         userText: z.string().optional(),
         assistantTexts: z.array(z.string()).optional(),
@@ -123,11 +124,26 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         },
       });
 
+      // Extract flow categories and count for display
+      const flowCategories = body.flowsOverride
+        ?.map(f => f.category)
+        .filter((cat, index, arr) => arr.indexOf(cat) === index) // unique categories
+        .slice(0, 1) || []; // top 1 most frequent
+      const flowCount = body.flowsOverride?.length || 0;
+      
+      // Calculate total turns across all flows
+      const turnCount = body.flowsOverride?.reduce((sum, flow) => {
+        return sum + ((flow?.endPair || 0) - (flow?.startPair || 0) + 1);
+      }, 0) || 0;
+
       return NextResponse.json({
         ok: true,
         block: {
           ...block,
           isRemix: false, // you can toggle this if you implement remix detection
+          flowCategories,
+          flowCount,
+          turnCount,
         },
       });
     }
